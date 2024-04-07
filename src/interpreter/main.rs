@@ -7,6 +7,7 @@ use token::Token;
 mod util;
 use util::{had_error_get, had_error_set};
 mod object;
+mod expr;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
