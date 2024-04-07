@@ -5,7 +5,7 @@ use scanner::Scanner;
 mod token;
 use token::Token;
 mod util;
-use util::had_error;
+use util::{had_error_get, had_error_set};
 mod object;
 
 fn main() -> io::Result<()> {
@@ -25,11 +25,11 @@ fn main() -> io::Result<()> {
 fn run_file(path: &String) -> io::Result<()> {
     let string = fs::read_to_string(path)?;
     run(string)?;
-    unsafe {
-        if had_error {
-            std::process::exit(65);
-        }
+
+    if had_error_get() {
+        std::process::exit(65);
     }
+
     Ok(())
 }
 
@@ -58,8 +58,6 @@ fn run_prompt() -> io::Result<()> {
             Err(e) => return io::Result::Err(e),
         }
         input.clear();
-        unsafe {
-            had_error = false;
-        }
+        had_error_set(false);
     }
 }
