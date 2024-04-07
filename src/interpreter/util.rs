@@ -1,13 +1,13 @@
-static mut had_error: bool = false;
+static mut HAD_ERROR: bool = false;
 
 pub fn had_error_set(value: bool) {
     unsafe {
-        had_error = value;
+        HAD_ERROR = value;
     }
 }
 
 pub fn had_error_get() -> bool {
-    unsafe { had_error }
+    unsafe { HAD_ERROR }
 }
 
 pub fn error(line: usize, message: &'static str) {

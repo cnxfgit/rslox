@@ -6,7 +6,7 @@ use crate::object::Object;
 use crate::token::{Token, TokenType};
 use crate::util::{error, is_alpha, is_digit};
 
-static keywords: Lazy<HashMap<&str, TokenType>> = Lazy::new(|| {
+static KEYWORDS: Lazy<HashMap<&str, TokenType>> = Lazy::new(|| {
     let mut map: HashMap<&str, TokenType> = HashMap::new();
     map.insert("and", TokenType::And);
     map.insert("class", TokenType::Class);
@@ -146,7 +146,7 @@ impl Scanner {
         }
 
         let text = self.source_slice();
-        let type_ = keywords.get(text);
+        let type_ = KEYWORDS.get(text);
         if let None = type_ {
             self.add_token(TokenType::Identifier);
         } else {
