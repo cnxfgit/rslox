@@ -37,9 +37,9 @@ impl Expr for Assign {
 }
 
 pub struct Binary {
-    left: Box<dyn Expr>,
-    operator: Token,
-    right: Box<dyn Expr>,
+    pub left: Box<dyn Expr>,
+    pub operator: Token,
+    pub right: Box<dyn Expr>,
 }
 
 impl Binary {
@@ -98,7 +98,7 @@ impl Expr for Get {
 }
 
 pub struct Grouping {
-    expression: Box<dyn Expr>,
+    pub expression: Box<dyn Expr>,
 }
 
 impl Grouping {
@@ -114,7 +114,7 @@ impl Expr for Grouping {
 }
 
 pub struct Literal {
-    value: Object,
+    pub value: Object,
 }
 
 impl Literal {
@@ -207,8 +207,8 @@ impl Expr for This {
 }
 
 pub struct Unary {
-    operator: Token,
-    right: Box<dyn Expr>,
+    pub operator: Token,
+    pub right: Box<dyn Expr>,
 }
 
 impl Unary {

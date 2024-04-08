@@ -5,7 +5,7 @@ use scanner::Scanner;
 mod token;
 use token::Token;
 mod util;
-use util::{had_error_get, had_error_set};
+use util::{had_error_get, had_error_set, AstPrinter};
 mod object;
 mod expr;
 mod parser;
@@ -46,7 +46,7 @@ fn run(source: String) -> io::Result<()> {
         return Ok(());
     }
 
-    
+    println!("{} {}", AstPrinter::new().print(expression), tokens.len());
 
     Ok(())
 }
