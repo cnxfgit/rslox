@@ -2,11 +2,12 @@ use core::fmt;
 
 use crate::object::Object;
 
+#[derive(Clone)]
 pub struct Token {
-    type_: TokenType,
-    lexeme: String,
-    literal: Object,
-    line: usize,
+    pub type_: TokenType,
+    pub lexeme: String,
+    pub literal: Object,
+    pub line: usize,
 }
 
 impl Token {
@@ -26,7 +27,7 @@ impl fmt::Display for Token {
     }
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenType {
     // Single-character tokens.
     LeftParen,

@@ -43,7 +43,7 @@ pub struct Binary {
 }
 
 impl Binary {
-    fn new(left: Box<dyn Expr>, operator: Token, right: Box<dyn Expr>) -> Binary {
+    pub fn new(left: Box<dyn Expr>, operator: Token, right: Box<dyn Expr>) -> Binary {
         Binary {
             left,
             operator,
@@ -53,7 +53,7 @@ impl Binary {
 }
 
 impl Expr for Binary {
-    fn accept(&self, visitor: Box<dyn Visitor>) -> Object {
+     fn accept(&self, visitor: Box<dyn Visitor>) -> Object {
         visitor.visit_binary_expr(self)
     }
 }
@@ -65,7 +65,7 @@ pub struct Call {
 }
 
 impl Call {
-    fn new(callee: Box<dyn Expr>, paren: Token, arguments: Vec<Box<dyn Expr>>) -> Call {
+    pub fn new(callee: Box<dyn Expr>, paren: Token, arguments: Vec<Box<dyn Expr>>) -> Call {
         Call {
             callee,
             paren,
@@ -86,7 +86,7 @@ pub struct Get {
 }
 
 impl Get {
-    fn new(object: Box<dyn Expr>, name: Token) -> Get {
+    pub fn new(object: Box<dyn Expr>, name: Token) -> Get {
         Get { object, name }
     }
 }
@@ -102,7 +102,7 @@ pub struct Grouping {
 }
 
 impl Grouping {
-    fn new(expression: Box<dyn Expr>) -> Grouping {
+    pub fn new(expression: Box<dyn Expr>) -> Grouping {
         Grouping { expression }
     }
 }
@@ -118,7 +118,7 @@ pub struct Literal {
 }
 
 impl Literal {
-    fn new(value: Object) -> Literal {
+    pub fn new(value: Object) -> Literal {
         Literal { value }
     }
 }
@@ -136,7 +136,7 @@ pub struct Logical {
 }
 
 impl Logical {
-    fn new(left: Box<dyn Expr>, operator: Token, right: Box<dyn Expr>) -> Logical {
+    pub fn new(left: Box<dyn Expr>, operator: Token, right: Box<dyn Expr>) -> Logical {
         Logical {
             left,
             operator,
@@ -158,7 +158,7 @@ pub struct Set {
 }
 
 impl Set {
-    fn new(object: Box<dyn Expr>, name: Token, value: Box<dyn Expr>) -> Set {
+    pub fn new(object: Box<dyn Expr>, name: Token, value: Box<dyn Expr>) -> Set {
         Set {
             object,
             name,
@@ -179,7 +179,7 @@ pub struct Super {
 }
 
 impl Super {
-    fn new(keyword: Token, method: Token) -> Super {
+    pub fn new(keyword: Token, method: Token) -> Super {
         Super { keyword, method }
     }
 }
@@ -195,7 +195,7 @@ pub struct This {
 }
 
 impl This {
-    fn new(keyword: Token) -> This {
+    pub fn new(keyword: Token) -> This {
         This { keyword }
     }
 }
@@ -212,7 +212,7 @@ pub struct Unary {
 }
 
 impl Unary {
-    fn new(operator: Token, right: Box<dyn Expr>) -> Unary {
+    pub fn new(operator: Token, right: Box<dyn Expr>) -> Unary {
         Unary { operator, right }
     }
 }
@@ -229,7 +229,7 @@ pub struct Variable {
 }
 
 impl Variable {
-    fn new(operator: Token, right: Box<dyn Expr>) -> Variable {
+    pub fn new(operator: Token, right: Box<dyn Expr>) -> Variable {
         Variable { operator, right }
     }
 }

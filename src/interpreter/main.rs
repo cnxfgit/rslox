@@ -8,6 +8,7 @@ mod util;
 use util::{had_error_get, had_error_set};
 mod object;
 mod expr;
+mod parser;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -38,9 +39,14 @@ fn run(source: String) -> io::Result<()> {
     let mut scanner = Scanner::new(source);
     let tokens: &Vec<Token> = scanner.scan_tokens();
 
-    for token in tokens {
-        println!("{}", token);
+    let parser = parser::Parser::new(tokens);
+    let expression  = parser.parse().unwrap();
+
+    if had_error_get() {
+        return Ok(());
     }
+
+    
 
     Ok(())
 }
