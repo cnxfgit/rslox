@@ -13,16 +13,20 @@ impl Chunk {
         }
     }
 
-    fn disassemble_instruction(&self, offset: usize) -> usize {
+    pub fn disassemble_instruction(&self, offset: usize) -> usize {
         print!("{:04} ", offset);
         print!("{:4} ", self.lines[offset]);
-        
 
         let instruction = self.code[offset];
         let instruction: OpCode = instruction.into();
         match instruction {
-            OpCode::Return => return self.simple_instruction("OP_RETURN", offset),
             OpCode::Constant => return self.constant_instruction("OP_CONSTANT", offset),
+            OpCode::Add => return self.simple_instruction("OP_ADD", offset),
+            OpCode::Subtract => return self.simple_instruction("OP_SUBTRACT", offset),
+            OpCode::Multiply => return self.simple_instruction("OP_MULTIPLY", offset),
+            OpCode::Divide => return self.simple_instruction("OP_DIVIDE", offset),
+            OpCode::Negate => return self.simple_instruction("OP_NEGATE", offset),
+            OpCode::Return => return self.simple_instruction("OP_RETURN", offset),
             _ => {
                 println!("Unknown opcode {}", instruction as u8);
                 return offset + 1;
