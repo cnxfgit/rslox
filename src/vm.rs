@@ -1,15 +1,17 @@
 use crate::chunk::{Chunk, OpCode};
+use crate::compiler::Compiler;
+use crate::scanner::{self, Scanner, TokenType};
 use crate::value::{print_value, Value};
 
 const STACK_MAX: usize = 256;
 
-enum InterpretResult {
+pub enum InterpretResult {
     Ok,
     CompileError,
     RuntimeError,
 }
 
-struct VM {
+pub struct VM {
     chunk: Option<Chunk>,
     ip: *mut u8,
     stack: [Value; STACK_MAX],
@@ -47,7 +49,7 @@ macro_rules! binary_op {
 }
 
 impl VM {
-    fn new() -> VM {
+    pub fn new() -> VM {
         let mut vm = VM {
             chunk: None,
             ip: std::ptr::null_mut(),
@@ -58,14 +60,21 @@ impl VM {
         vm
     }
 
-    fn interpret(&mut self, chunk: Chunk) -> InterpretResult {
+    pub fn interpret(&mut self, source: String) -> InterpretResult {
+        let chunk = Chunk::new();
+
+        if !self.compile(source) {
+            return InterpretResult::CompileError;
+        }
+
         self.chunk = Some(chunk);
         if let Some(chunk) = &mut self.chunk {
             self.ip = chunk.code.as_mut_ptr();
         } else {
             panic!("vm.chunk None.");
         }
-        return self.run();
+        let result = self.run();
+        return result;
     }
 
     fn run(&mut self) -> InterpretResult {
@@ -113,6 +122,16 @@ impl VM {
         }
 
         InterpretResult::Ok
+    }
+
+    fn compile(&mut self, source: String) -> bool {
+        let scanner = Scanner::new(source);
+        let mut compiler = Compiler::new(scanner);
+
+        compiler.advance();
+        compiler.consume(TokenType::Eof, "Expect end of expression.");
+
+        !compiler.parser.had_error
     }
 
     fn push(&mut self, value: Value) {
