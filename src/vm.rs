@@ -1,9 +1,30 @@
+use std::collections::HashMap;
+use std::ptr::null_mut;
+
 use crate::chunk::{Chunk, OpCode};
 use crate::compiler::Compiler;
-use crate::scanner::{self, Scanner, TokenType};
-use crate::value::{print_value, Value};
+use crate::scanner::{Scanner, TokenType};
+use crate::table::Table;
+use crate::value::Value;
 
 const STACK_MAX: usize = 256;
+
+static mut VM: *mut VM = null_mut();
+
+pub fn init_vm() {
+    let mut vm = Box::new(VM::new());
+    unsafe { VM = Box::into_raw(vm) };
+}
+
+pub fn drop_vm() {
+    unsafe {
+        Box::from_raw(VM);
+    }
+}
+
+pub fn vm() -> &'static mut VM {
+    unsafe { &mut *VM }
+}
 
 pub enum InterpretResult {
     Ok,
@@ -16,6 +37,8 @@ pub struct VM {
     ip: *mut u8,
     stack: [Value; STACK_MAX],
     stack_top: *mut Value,
+
+    pub strings: Table,
 }
 
 macro_rules! read_byte {
@@ -53,8 +76,10 @@ impl VM {
         let mut vm = VM {
             chunk: None,
             ip: std::ptr::null_mut(),
-            stack: [0.0; STACK_MAX],
+            stack: [Value::Nil; STACK_MAX],
             stack_top: std::ptr::null_mut(),
+
+            strings: Table{map: HashMap::new()},
         };
         vm.stack_top = vm.stack.as_mut_ptr();
         vm
@@ -87,7 +112,7 @@ impl VM {
                     let mut slot = self.stack.as_mut_ptr();
                     for _ in 0..offset {
                         print!("[ ");
-                        print_value(unsafe { *slot });
+                        (unsafe { *slot }).print();
                         print!(" ]");
                         slot = unsafe { slot.add(1) };
                     }
@@ -113,7 +138,7 @@ impl VM {
                     self.push(value);
                 }
                 OpCode::Return => {
-                    print_value(self.pop());
+                    self.pop().print();
                     println!("");
                     return InterpretResult::Ok;
                 }
@@ -134,14 +159,14 @@ impl VM {
         !compiler.parser.had_error
     }
 
-    fn push(&mut self, value: Value) {
+    pub fn push(&mut self, value: Value) {
         unsafe {
             *self.stack_top = value;
             self.stack_top = self.stack_top.add(1);
         }
     }
 
-    fn pop(&mut self) -> Value {
+    pub fn pop(&mut self) -> Value {
         unsafe {
             self.stack_top = self.stack_top.sub(1);
             *self.stack_top

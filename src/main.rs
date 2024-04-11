@@ -4,27 +4,32 @@ mod value;
 mod vm;
 mod compiler;
 mod scanner;
+mod object;
+mod table;
+mod memory;
 use std::{env, fs, io::{self, Write}, process};
-use vm::{InterpretResult, VM};
+use vm::{InterpretResult, vm};
 
 fn main() -> io::Result<()> {
-    let mut vm = VM::new();
+    vm::init_vm();
 
     let args: Vec<String> = env::args().collect();
 
     if args.len() == 1 {
-        repl(&mut vm)?;
+        repl()?;
     } else if args.len() == 2 {
-        run_file(&mut vm, &args[1])?;
+        run_file(&args[1])?;
     } else {
         eprintln!("Usage: clox [path]");
         process::exit(64);
     }
 
+    vm::drop_vm();
+
     Ok(())
 }
 
-fn repl(vm: &mut VM) -> io::Result<()>  {
+fn repl() -> io::Result<()>  {
     let mut line = String::new();
     loop {
         print!("> ");
@@ -34,16 +39,16 @@ fn repl(vm: &mut VM) -> io::Result<()>  {
             break;
         }
 
-        vm.interpret(line.clone());
+        vm().interpret(line.clone());
         line.clear();
     }
 
     Ok(())
 }
 
-fn run_file(vm: &mut VM, path: &str) -> io::Result<()> {
+fn run_file(path: &str) -> io::Result<()> {
     let source = fs::read_to_string(path)?;
-    let result = vm.interpret(source);
+    let result = vm().interpret(source);
 
     match result {
         InterpretResult::CompileError => process::exit(65),
