@@ -134,7 +134,7 @@ impl Scanner {
     ) -> TokenType {
         let begin = self.start + start;
         if self.current - self.start == start + length
-            && String::from_utf8((self.source.as_bytes()[begin..begin + length]).to_vec()).unwrap()
+            && self.sub_current()
                 == rest
         {
             return type_;
@@ -215,7 +215,7 @@ impl Scanner {
         return self.source.as_bytes()[self.current] as char;
     }
 
-    fn match_(&mut self, expected: char) -> bool {
+    pub fn match_(&mut self, expected: char) -> bool {
         if self.is_at_end() {
             return false;
         }
@@ -241,16 +241,22 @@ impl Scanner {
             start: self.start,
             length: self.current - self.start,
             line: self.line,
+            message: self.sub_current(),
         }
     }
 
     fn error_token(&self, message: &str) -> Token {
         Token {
-            type_: TokenType::Error(message.into()),
+            type_: TokenType::Error,
             start: 0,
             length: message.len(),
             line: self.line,
+            message: message.into(),
         }
+    }
+
+    fn sub_current(&self) -> String {
+        String::from_utf8((self.source.as_bytes()[self.start..self.start + self.current]).to_vec()).unwrap()
     }
 }
 
@@ -262,7 +268,7 @@ fn is_alpha(c: char) -> bool {
     (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
 }
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum TokenType {
     LeftParen,
     RightParen,
@@ -302,9 +308,10 @@ pub enum TokenType {
     True,
     Var,
     While,
-    Error(String),
+    Error,
     Eof,
 }
+
 
 impl From<TokenType> for i32 {
     fn from(type_: TokenType) -> i32 {
@@ -347,7 +354,7 @@ impl From<TokenType> for i32 {
             TokenType::True => 36,
             TokenType::Var => 37,
             TokenType::While => 38,
-            TokenType::Error(_) => 39,
+            TokenType::Error => 39,
             TokenType::Eof => 40,
         }
     }
@@ -360,6 +367,7 @@ pub struct Token {
     pub start: usize,
     pub length: usize,
     pub line: usize,
+    pub message: String,
 }
 
 impl Token {
@@ -369,6 +377,7 @@ impl Token {
             start: 0,
             length: 0,
             line: 0,
+            message: String::new(),
         }
     }
 }

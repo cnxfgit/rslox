@@ -25,7 +25,6 @@ fn main() -> io::Result<()> {
     }
 
     vm::drop_vm();
-
     Ok(())
 }
 

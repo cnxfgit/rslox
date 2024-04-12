@@ -33,6 +33,20 @@ macro_rules! as_obj {
     }};
 }
 
+#[macro_export]
+macro_rules! number_val {
+    ($val:expr) => {
+        Value::Number($val)
+    };
+}
+
+#[macro_export]
+macro_rules! obj_val {
+    ($val:expr) => {
+        Value::Object($val as *mut Obj) 
+    };
+}
+
 pub struct ValueArray {
     pub values: Vec<Value>,
 }

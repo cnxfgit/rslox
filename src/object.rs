@@ -25,6 +25,23 @@ pub enum ObjType {
     Upvalue,     // 闭包提升值对象
 }
 
+#[macro_export]
+macro_rules! as_string {
+    ($val:expr) => {{
+        if let Value::Object(obj) = $val {
+            unsafe {
+                if (*obj).type_ == ObjType::String {
+                    obj as *mut ObjString
+                } else {
+                    panic!("as_string! error.");
+                }
+            }
+        } else {
+            panic!("as_string! error.");
+        }
+    }};
+}
+
 pub trait Object {
     fn obj_type(&self) -> ObjType;
 }
@@ -53,16 +70,16 @@ impl Object for Obj {
     }
 }
 
-struct ObjFunction {
+pub struct ObjFunction {
     obj: Obj,             // 公共对象头
-    arity: usize,         // 参数数
-    upvalue_count: usize, // 提升值数
-    chunk: Chunk,         // 函数的字节码块
-    name: *mut ObjString, // 函数名
+    pub arity: usize,         // 参数数
+    pub upvalue_count: usize, // 提升值数
+    pub chunk: Chunk,         // 函数的字节码块
+    pub name: *mut ObjString, // 函数名
 }
 
 impl ObjFunction {
-    fn new() -> *mut ObjFunction {
+    pub fn new() -> *mut ObjFunction {
         let ptr = allocate_obj::<ObjFunction>(ObjType::Function);
         let chunk = Chunk::new();
         unsafe {
@@ -83,15 +100,15 @@ impl Object for ObjFunction {
     }
 }
 
-type NativeFn = fn(usize, *mut Value) -> Value;
+pub type NativeFn = fn(usize, *mut Value) -> Value;
 
-struct ObjNative {
+pub struct ObjNative {
     obj: Obj,           // 公共对象头
     function: NativeFn, // 原生函数指针
 }
 
 impl ObjNative {
-    fn new(function: NativeFn) -> *mut ObjNative {
+    pub fn new(function: NativeFn) -> *mut ObjNative {
         let ptr = allocate_obj::<ObjNative>(ObjType::Native);
         unsafe {
             (*ptr).function = function;
@@ -109,11 +126,11 @@ impl Object for ObjNative {
 
 pub struct ObjString {
     obj: Obj,      // 公共对象头
-    chars: String, // 字符串
+    pub chars: String, // 字符串
 }
 
 impl ObjString {
-    fn new(string: String) -> *mut ObjString {
+    pub fn new(string: String) -> *mut ObjString {
         let ptr = allocate_obj::<ObjString>(ObjType::String);
 
         unsafe {
@@ -124,7 +141,7 @@ impl ObjString {
         ptr
     }
 
-    fn take_string(string: String) -> *mut ObjString {
+    pub fn take_string(string: String) -> *mut ObjString {
         let new_string = ObjString::new(string);
 
         let result = vm().strings.get_key(new_string);
@@ -158,7 +175,7 @@ impl PartialEq for ObjString {
     }
 }
 
-struct ObjUpvalue {
+pub struct ObjUpvalue {
     obj: Obj,              // 公共对象头
     location: *mut Value,  // 捕获的局部变量
     closed: Value,         //
@@ -185,15 +202,15 @@ impl Object for ObjUpvalue {
 }
 
 // 闭包对象
-struct ObjClosure {
+pub struct ObjClosure {
     obj: Obj,                       // 公共对象头
-    function: *mut ObjFunction,     // 裸函数
+    pub function: *mut ObjFunction,     // 裸函数
     upvalues: *mut *mut ObjUpvalue, // 提升值数组
     upvalue_count: usize,           // 提升值数量
 }
 
 impl ObjClosure {
-    fn new(function: *mut ObjFunction) -> *mut ObjClosure {
+    pub fn new(function: *mut ObjFunction) -> *mut ObjClosure {
         let upvalue_count = (unsafe { *function }).upvalue_count;
         let upvalues = allocate::<*mut ObjUpvalue>(upvalue_count);
         for i in 0..upvalue_count {
@@ -219,7 +236,7 @@ impl Object for ObjClosure {
 }
 
 // 类对象
-struct ObjClass {
+pub struct ObjClass {
     obj: Obj,             // 公共对象头
     name: *mut ObjString, // 类名
     methods: *mut Table,  // 类方法
@@ -244,7 +261,7 @@ impl Object for ObjClass {
 }
 
 // 实例对象
-struct ObjInstance {
+pub struct ObjInstance {
     obj: Obj,
     class: *mut ObjClass,
     fields: *mut Table,
@@ -270,7 +287,7 @@ impl Object for ObjInstance {
 }
 
 // 绑定方法对象
-struct ObjBoundMethod {
+pub struct ObjBoundMethod {
     obj: Obj,
     receiver: Value,
     method: *mut ObjClosure,
