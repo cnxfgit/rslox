@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::ptr::null_mut;
 use std::time::Instant;
 
-use crate::chunk::{Chunk, OpCode};
+use crate::chunk::OpCode;
 use crate::compiler::{ClassCompiler, Compiler, FunctionType, Parser};
 use crate::object::{
     NativeFn, Obj, ObjClosure, ObjFunction, ObjNative, ObjString, ObjType, ObjUpvalue,
 };
-use crate::scanner::{Scanner, TokenType};
+use crate::scanner::Scanner;
 use crate::table::Table;
 use crate::value::Value;
 use crate::{as_string, number_val, obj_val};
@@ -79,7 +79,7 @@ pub struct VM {
     pub current_compiler: *mut Compiler,
     pub parser: Parser,
     pub scanner: Option<Scanner>,
-    pub current_class: *mut ClassCompiler,
+    pub class_compiler: *mut ClassCompiler,
 }
 
 macro_rules! read_byte {
@@ -146,7 +146,7 @@ impl VM {
             current_compiler: null_mut(),
             parser: Parser::new(),
             scanner: None,
-            current_class: null_mut(),
+            class_compiler: null_mut(),
         };
         vm.stack_top = vm.stack.as_mut_ptr();
 

@@ -1,6 +1,19 @@
 use crate::chunk::{Chunk, OpCode};
 
 impl Chunk {
+    pub fn disassemble_chunk(&self, name: &str) {
+        println!("== {} ==", name); // 打印字节码块名
+    
+        // 遍历字节码块中的字节码
+        let mut offset = 0;
+        loop {
+            if offset >= self.count() {
+                break;
+            }
+            offset = self.disassemble_instruction(offset);
+        }
+    }
+
     pub fn disassemble(&self, name: &str) {
         println!("== {} ==", name);
 

@@ -270,7 +270,7 @@ fn is_alpha(c: char) -> bool {
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum TokenType {
-    LeftParen,
+    LeftParen = 0,
     RightParen,
     LeftBrace,
     RightBrace,
@@ -311,55 +311,6 @@ pub enum TokenType {
     Error,
     Eof,
 }
-
-
-impl From<TokenType> for i32 {
-    fn from(type_: TokenType) -> i32 {
-        match type_ {
-            TokenType::LeftParen => 1,
-            TokenType::RightParen => 2,
-            TokenType::LeftBrace => 3,
-            TokenType::RightBrace => 4,
-            TokenType::Comma => 5,
-            TokenType::Dot => 6,
-            TokenType::Minus => 7,
-            TokenType::Plus => 8,
-            TokenType::Semicolon => 9,
-            TokenType::Slash => 10,
-            TokenType::Star => 11,
-            TokenType::Bang => 12,
-            TokenType::BangEqual => 13,
-            TokenType::Equal => 14,
-            TokenType::EqualEqual => 15,
-            TokenType::Greater => 16,
-            TokenType::GreaterEqual => 17,
-            TokenType::Less => 18,
-            TokenType::LessEqual => 19,
-            TokenType::Identifier => 20,
-            TokenType::String => 21,
-            TokenType::Number => 22,
-            TokenType::And => 23,
-            TokenType::Class => 24,
-            TokenType::Else => 25,
-            TokenType::False => 26,
-            TokenType::For => 27,
-            TokenType::Fun => 28,
-            TokenType::If => 29,
-            TokenType::Nil => 30,
-            TokenType::Or => 31,
-            TokenType::Print => 32,
-            TokenType::Return => 33,
-            TokenType::Super => 34,
-            TokenType::This => 35,
-            TokenType::True => 36,
-            TokenType::Var => 37,
-            TokenType::While => 38,
-            TokenType::Error => 39,
-            TokenType::Eof => 40,
-        }
-    }
-}
-
 
 #[derive(Clone)]
 pub struct Token {
