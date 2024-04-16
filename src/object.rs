@@ -42,6 +42,41 @@ macro_rules! as_string {
     }};
 }
 
+#[macro_export]
+macro_rules! is_instance {
+    ($val:expr) => {
+        $val.is_obj_type(ObjType::Instance)
+    };
+}
+
+#[macro_export]
+macro_rules! is_string {
+    ($val:expr) => {
+        $val.is_obj_type(ObjType::String)
+    };
+}
+
+#[macro_export]
+macro_rules! as_instance {
+    ($val:expr) => {
+        as_obj!($val) as *mut ObjInstance
+    };
+}
+
+#[macro_export]
+macro_rules! as_class {
+    ($val:expr) => {
+        as_obj!($val) as *mut ObjClass
+    };
+}
+
+#[macro_export]
+macro_rules! as_closure {
+    ($val:expr) => {
+        as_obj!($val) as *mut ObjClosure
+    };
+}
+
 pub trait Object {
     fn obj_type(&self) -> ObjType;
 }
@@ -56,12 +91,6 @@ pub struct Obj {
     pub type_: ObjType,  // 对象类型
     pub is_marked: bool, // 是否被标记
     pub next: *mut Obj,  // 下一个对象
-}
-
-impl Obj {
-    fn is_obj_type(value: Value, type_: ObjType) -> bool {
-        is_obj!(value) && (unsafe { *as_obj!(value) }).type_ == type_
-    }
 }
 
 impl Object for Obj {
@@ -177,9 +206,9 @@ impl PartialEq for ObjString {
 
 pub struct ObjUpvalue {
     obj: Obj,              // 公共对象头
-    location: *mut Value,  // 捕获的局部变量
-    closed: Value,         //
-    next: *mut ObjUpvalue, // next指针
+    pub location: *mut Value,  // 捕获的局部变量
+    pub closed: Value,         //
+    pub next: *mut ObjUpvalue, // next指针
 }
 
 impl ObjUpvalue {
@@ -205,7 +234,7 @@ impl Object for ObjUpvalue {
 pub struct ObjClosure {
     obj: Obj,                       // 公共对象头
     pub function: *mut ObjFunction,     // 裸函数
-    upvalues: *mut *mut ObjUpvalue, // 提升值数组
+    pub upvalues: *mut *mut ObjUpvalue, // 提升值数组
     upvalue_count: usize,           // 提升值数量
 }
 
@@ -238,8 +267,8 @@ impl Object for ObjClosure {
 // 类对象
 pub struct ObjClass {
     obj: Obj,             // 公共对象头
-    name: *mut ObjString, // 类名
-    methods: *mut Table,  // 类方法
+    pub name: *mut ObjString, // 类名
+    pub methods: *mut Table,  // 类方法
 }
 
 impl ObjClass {
@@ -263,8 +292,8 @@ impl Object for ObjClass {
 // 实例对象
 pub struct ObjInstance {
     obj: Obj,
-    class: *mut ObjClass,
-    fields: *mut Table,
+    pub class: *mut ObjClass,
+    pub fields: *mut Table,
 }
 
 impl ObjInstance {
@@ -294,7 +323,7 @@ pub struct ObjBoundMethod {
 }
 
 impl ObjBoundMethod {
-    fn new(receiver: Value, method: *mut ObjClosure) -> *mut ObjBoundMethod {
+    pub fn new(receiver: Value, method: *mut ObjClosure) -> *mut ObjBoundMethod {
         let ptr = allocate_obj::<ObjBoundMethod>(ObjType::BoundMethod);
 
         unsafe {

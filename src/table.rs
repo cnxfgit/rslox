@@ -20,8 +20,15 @@ impl Table {
         self.map.get(&key)
     }
 
-    pub fn set(&self, key: *mut ObjString, value: Value) {
-        self.map.insert(key, value);
+    pub fn set(&self, key: *mut ObjString, value: Value) -> bool {
+        match self.map.insert(key, value) {
+            Some(_) => false,
+            None => true
+        }
+    }
+
+    pub fn remove(&self, key: *mut ObjString) {
+        self.map.remove(&key);
     }
 
     pub fn get_key(&self, key: *mut ObjString) -> Option<*mut ObjString>  {

@@ -1,4 +1,4 @@
-use crate::object::Obj;
+use crate::object::{Obj, ObjType};
 
 #[derive(Clone, Copy)]
 pub enum Value {
@@ -8,16 +8,23 @@ pub enum Value {
     Object(*mut Obj),
 }
 
-impl Value {
-    pub fn print(&self) {}
-}
 
 #[macro_export]
 macro_rules! is_obj {
     ($val:expr) => {{
         match $val {
-            Value::Nil | Value::Boolean(_) | Value::Number(_) => false,
             Value::Object(_) => true,
+            _ => false,
+        }
+    }};
+}
+
+#[macro_export]
+macro_rules! is_number {
+    ($val:expr) => {{
+        match $val {
+            Value::Number(_) => true,
+            _ => false,
         }
     }};
 }
@@ -25,8 +32,8 @@ macro_rules! is_obj {
 #[macro_export]
 macro_rules! as_obj {
     ($val:expr) => {{
-        if let Value::Object(obj) =  $val {
-            obj
+        if let Value::Object(obj) = $val {
+            obj.clone()
         } else {
             panic!("as_obj! error")
         }
@@ -34,10 +41,14 @@ macro_rules! as_obj {
 }
 
 #[macro_export]
-macro_rules! number_val {
-    ($val:expr) => {
-        Value::Number($val)
-    };
+macro_rules! as_number {
+    ($val:expr) => {{
+        if let Value::Number(n) = $val {
+            n
+        } else {
+            panic!("as_number! error")
+        }
+    }};
 }
 
 #[macro_export]
@@ -45,6 +56,14 @@ macro_rules! obj_val {
     ($val:expr) => {
         Value::Object($val as *mut Obj) 
     };
+}
+
+impl Value {
+    pub fn print(&self) {}
+
+    pub fn is_obj_type(&self, type_: ObjType) -> bool {
+        is_obj!(self) && (unsafe { *as_obj!(self) }).type_ == type_
+    }
 }
 
 pub struct ValueArray {

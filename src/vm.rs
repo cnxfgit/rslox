@@ -1,16 +1,20 @@
 use std::collections::HashMap;
 use std::ptr::null_mut;
+use std::result;
 use std::time::Instant;
 
 use crate::chunk::OpCode;
 use crate::compiler::{ClassCompiler, Compiler, FunctionType, Parser};
 use crate::object::{
-    NativeFn, Obj, ObjClosure, ObjFunction, ObjNative, ObjString, ObjType, ObjUpvalue,
+    NativeFn, Obj, ObjBoundMethod, ObjClass, ObjClosure, ObjFunction, ObjInstance, ObjNative,
+    ObjString, ObjType, ObjUpvalue,
 };
 use crate::scanner::Scanner;
 use crate::table::Table;
 use crate::value::Value;
-use crate::{as_string, number_val, obj_val};
+use crate::{
+    as_class, as_closure, as_instance, as_number, as_obj, as_string, is_instance, is_number, is_string, obj_val
+};
 
 pub const UINT8_COUNT: usize = u8::MAX as usize + 1;
 const FRAMES_MAX: usize = 64;
@@ -83,39 +87,71 @@ pub struct VM {
 }
 
 macro_rules! read_byte {
-    ($vm:expr) => {{
+    ($frame:expr) => {
         unsafe {
-            $vm.ip = $vm.ip.add(1);
-            *$vm.ip
+            let result = *(*$frame).ip;
+            (*$frame).ip = (*$frame).ip.add(1);
+            result
         }
-    }};
+    };
 }
 
 macro_rules! read_constant {
-    ($vm:expr) => {{
-        let instruction = read_byte!($vm);
-        let mut value = 0.0;
-        if let Some(chunk) = &mut $vm.chunk {
-            value = chunk.constants.values[instruction as usize]
-        } else {
-            panic!("vm.chunk None.");
+    ($frame:expr) => {
+        unsafe {
+            (*(*(*$frame).closure).function).chunk.constants.values[read_byte!($frame) as usize]
         }
-        value
-    }};
+    };
+}
+
+macro_rules! read_string {
+    ($frame:expr) => {
+        as_string!(read_constant!($frame))
+    };
+}
+
+macro_rules! create_value {
+    (f64) => {
+        Value::Number
+    };
+    (bool) => {
+        Value::Boolean
+    }
 }
 
 macro_rules! binary_op {
-    ($vm:expr, $op:tt) => {{
-        let b = $vm.pop();
-        let a = $vm.pop();
-        $vm.push(a $op b);
+    ($vm:expr, $value_type:tt, $op:tt) => {{
+        match ($vm.peek(0), $vm.peek(1)) {
+            (Value::Number(_), Value::Number(_)) => {
+                let b = $vm.pop(); 
+                let a = $vm.pop(); 
+                if let (Value::Number(n1), Value::Number(n2)) = (a, b) {
+                    let value = n1 $op n2;
+                    $vm.push(create_value!($value_type)(value)); 
+                }
+            }
+            _ => {
+                $vm.runtime_error("Operands must be numbers.".into()); 
+                return InterpretResult::RuntimeError; 
+            }
+        }
     }};
 }
 
 fn clock_native(arg_count: usize, args: *mut Value) -> Value {
     let now = Instant::now();
     let secs = now.elapsed().as_secs_f64();
-    number_val!(secs)
+    Value::Number(secs)
+}
+
+fn values_equal(a: Value, b: Value) -> bool {
+    match (a, b) {
+        (Value::Boolean(bool1), Value::Boolean(bool2)) => bool1 == bool2,
+        (Value::Nil, Value::Nil) => true,
+        (Value::Number(n1), Value::Number(n2)) => n1 == n2,
+        (Value::Object(obj1), Value::Object(obj2)) => obj1 == obj2,
+        _ => false, // Unreachable.
+    }
 }
 
 impl VM {
@@ -232,50 +268,197 @@ impl VM {
     }
 
     fn run(&mut self) -> InterpretResult {
+        // 拿到vm中的栈帧
+        let frame = &mut self.frames[self.frame_count - 1] as *mut CallFrame;
+
         loop {
-            if let Some(chunk) = &mut self.chunk {
-                #[cfg(feature = "debug_trace_execution")]
-                {
-                    print!("          ");
-                    let offset = self.stack_top as usize - self.stack.as_ptr() as usize;
-                    let mut slot = self.stack.as_mut_ptr();
-                    for _ in 0..offset {
-                        print!("[ ");
-                        (unsafe { *slot }).print();
-                        print!(" ]");
-                        slot = unsafe { slot.add(1) };
-                    }
-                    println!("");
-                    chunk.disassemble_instruction(self.ip as usize - chunk.code.as_ptr() as usize);
+            #[cfg(feature = "debug_trace_execution")]
+            {
+                print!("          ");
+                let mut slot = self.stack.as_mut_ptr();
+                while slot < self.stack_top {
+                    print!("[ ");
+                    (unsafe { *slot }).print();
+                    print!(" ]");
+                    slot = unsafe { slot.add(1) };
+                }
+                println!("");
+                unsafe {
+                    let chunk = &(*(*(*frame).closure).function).chunk;
+                    chunk.disassemble_instruction(
+                        (*frame).ip as usize - chunk.code.as_mut_ptr() as usize,
+                    );
                 }
             }
 
-            let instruction = read_byte!(self);
+            let instruction: OpCode = read_byte!(frame).into();
 
             let op_code: OpCode = instruction.into();
             match op_code {
                 OpCode::Constant => {
-                    let constant = read_constant!(self);
+                    let constant = read_constant!(frame);
                     self.push(constant);
                 }
-                OpCode::Add => binary_op!(self,+),
-                OpCode::Subtract => binary_op!(self,-),
-                OpCode::Multiply => binary_op!(self,*),
-                OpCode::Divide => binary_op!(self,/),
-                OpCode::Negate => {
-                    let value = -self.pop();
+                OpCode::Nil => self.push(Value::Nil),
+                OpCode::True => self.push(Value::Boolean(true)),
+                OpCode::False => self.push(Value::Boolean(false)),
+                OpCode::Pop => self.pop(),
+                OpCode::GetLocal => {
+                    let slot = read_byte!(frame);
+                    unsafe {
+                        self.push(*(*frame).slots.add(slot as usize));
+                    }
+                }
+                OpCode::SetLocal => {
+                    let slot = read_byte!(frame);
+                    unsafe {
+                        std::ptr::write((*frame).slots.add(slot as usize), self.peek(0));
+                    }
+                }
+                OpCode::GetGlobal => {
+                    let name = read_string!(frame);
+
+                    match self.globals.get(name) {
+                        Some(value) => self.push(value.clone()),
+                        None => {
+                            self.runtime_error(format!("Undefined variable '{}'.", unsafe {
+                                &(*name).chars
+                            }));
+                            return InterpretResult::RuntimeError;
+                        }
+                    }
+                }
+                OpCode::DefineGlobal => {
+                    let name = read_string!(frame);
+                    self.globals.set(name, self.peek(0));
+                    self.pop();
+                }
+                OpCode::SetGlobal => {
+                    let name = read_string!(frame);
+                    if self.globals.set(name, self.peek(0)) {
+                        self.globals.remove(name);
+                        self.runtime_error(format!(
+                            "Undefined variable '{}'.",
+                            &(unsafe { *name }).chars
+                        ));
+                        return InterpretResult::RuntimeError;
+                    }
+                }
+                OpCode::GetUpvalue => {
+                    let slot = read_byte!(frame);
+                    unsafe {
+                        self.push(*(**(*(*frame).closure).upvalues.add(slot as usize)).location);
+                    }
+                }
+                OpCode::SetUpvalue => {
+                    let slot = read_byte!(frame);
+                    unsafe {
+                        std::ptr::write(
+                            (**(*(*frame).closure).upvalues.add(slot as usize)).location,
+                            self.peek(0),
+                        );
+                    }
+                }
+                OpCode::GetProperty => {
+                    if !is_instance!(self.peek(0)) {
+                        self.runtime_error("Only instances have properties.".into());
+                        return InterpretResult::RuntimeError;
+                    }
+
+                    let instance = as_instance!(self.peek(0));
+                    let name = read_string!(frame);
+
+                    if let Some(value) = self.globals.get(name) {
+                        self.pop();
+                        self.push(value.clone());
+                    } else if !self.bind_method((unsafe { *instance }).class, name) {
+                        return InterpretResult::RuntimeError;
+                    }
+                }
+                OpCode::SetProperty => {
+                    if !is_instance!(self.peek(1)) {
+                        self.runtime_error("Only instances have fields.".into());
+                        return InterpretResult::RuntimeError;
+                    }
+
+                    let instance = as_instance!(self.peek(1));
+                    unsafe {
+                        (*(*instance).fields).set(read_string!(frame), self.peek(0));
+                    }
+                    let value = self.pop();
+                    self.pop();
                     self.push(value);
                 }
-                OpCode::Return => {
-                    self.pop().print();
-                    println!("");
-                    return InterpretResult::Ok;
+                OpCode::GetSuper => {
+                    let name = read_string!(frame);
+                    let superclass = as_class!(self.pop());
+
+                    if !self.bind_method(superclass, name) {
+                        return InterpretResult::RuntimeError;
+                    }
                 }
-                _ => {}
+                OpCode::Equal => {
+                    let b = self.pop();
+                    let a = self.pop();
+                    self.push(Value::Boolean(values_equal(a, b)));
+                }
+                OpCode::Greater => binary_op!(self, bool, >),
+                OpCode::Less => binary_op!(self, bool, <),
+                OpCode::Add => {
+                    if is_string!(self.peek(0)) && is_string!(self.peek(1)) {
+                        self.concatenate();
+                    } else if (is_number!(self.peek(0)) && is_number!(self.peek(1))) {
+                        let b = as_number!(self.pop());
+                        let a = as_number!(self.pop());
+                        self.push(Value::Number(a + b));
+                    } else {
+                        self.runtime_error( "Operands must be two numbers or two strings.".into());
+                        return InterpretResult::RuntimeError;
+                    }
+                }
+                OpCode::Subtract => binary_op!(self, f64, -),
+                OpCode::Multiply => binary_op!(self, f64, *),
+                OpCode::Divide => binary_op!(self, f64, /),
+                _ => {break;}
             }
         }
 
         InterpretResult::Ok
+    }
+
+    // 连接字符串
+    fn concatenate(&self) {
+        let b = as_string!(self.peek(0));
+        let a = as_string!(self.peek(1));
+    
+        
+        unsafe {
+            let result = String::new();
+            let result = ObjString::take_string(result + &(*a).chars + &(*b).chars);
+
+            self.pop();
+            self.pop();
+    
+            self.push(Value::Object(result as *mut Obj));
+        }
+    }
+
+    fn bind_method(&self, class: *mut ObjClass, name: *mut ObjString) -> bool {
+        unsafe {
+            if let Some(method) = (*(*class).methods).get(name) {
+                let bound = ObjBoundMethod::new(self.peek(0), as_closure!(method.clone()));
+                self.pop();
+                self.push(obj_val!(bound));
+                true
+            } else {
+                self.runtime_error(format!("Undefined property '{}'.", &(*name).chars));
+                false
+            }
+        }
+    }
+
+    fn peek(&self, distance: i32) -> Value {
+        return unsafe { *self.stack_top.offset((-1 - distance) as isize) }.clone();
     }
 
     fn compile(&mut self, source: String) -> *mut ObjFunction {

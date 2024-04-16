@@ -1,8 +1,7 @@
 use std::ptr::null_mut;
 
 use crate::{
-    chunk::{Chunk, OpCode},
-    number_val, obj_val,
+    chunk::{Chunk, OpCode},obj_val,
     object::{ObjFunction, ObjString, Obj},
     scanner::{Token, TokenType},
     value::Value,
@@ -761,7 +760,7 @@ impl Compiler {
     // 数字表达式
     fn number(&'static mut self, can_assign: bool) {
         let value = vm().parser.previous.message.parse::<f64>().unwrap();
-        self.emit_constant(number_val!(value));
+        self.emit_constant(Value::Number(value));
     }
 
     // 逻辑与
