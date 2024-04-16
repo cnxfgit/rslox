@@ -3,7 +3,7 @@ use std::ptr::null_mut;
 use crate::{
     chunk::{Chunk, OpCode},
     number_val, obj_val,
-    object::{ObjFunction, ObjString},
+    object::{ObjFunction, ObjString, Obj},
     scanner::{Token, TokenType},
     value::Value,
     vm::{vm, UINT8_COUNT},
@@ -252,6 +252,7 @@ static RULES: [ParseRule; 40] = [
     },
 ];
 
+#[derive(PartialEq, Eq)]
 // 函数类型
 pub enum FunctionType {
     Function,    // 正常函数
@@ -509,6 +510,176 @@ impl Compiler {
         }
     }
 
+    // 语句
+    fn statement(&self) {
+        if self.match_(TokenType::Print) {
+            self.print_statement();
+        } else if self.match_(TokenType::For) {
+            self.for_statement();
+        } else if self.match_(TokenType::If) {
+            self.if_statement();
+        } else if self.match_(TokenType::Return) {
+            self.return_statement();
+        } else if self.match_(TokenType::While) {
+            self.while_statement();
+        } else if self.match_(TokenType::LeftBrace) {
+            self.begin_scope();
+            self.block();
+            self.end_scope();
+        } else {
+            self.expression_statement();
+        }
+    }
+
+    // 表达式语句
+    fn expression_statement(&self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after expression.");
+        self.emit_byte(OpCode::Pop as u8);
+    }
+
+
+    // while 语句
+    fn while_statement(&self) {
+        // 循环起点
+        let loop_start = current_chunk().count();
+        self.consume(TokenType::LeftParen, "Expect '(' after 'while'.");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after condition.");
+
+        // 如果为false直接跳到下面的pop
+        let exit_jump = self.emit_jump(OpCode::JumpIfFalse as u8);
+        self.emit_byte(OpCode::Pop as u8);
+        self.statement();
+        // 循环节点
+        self.emit_loop(loop_start as i32);
+
+        self.patch_jump(exit_jump);
+        // false的跳入点
+        self.emit_byte(OpCode::Pop as u8);
+    }
+
+    // 返回语句
+    fn return_statement(&self) {
+        if current().type_ == FunctionType::Script {
+            self.error("Can't return from top-level code.");
+        }
+
+        if self.match_(TokenType::Semicolon) {
+            self.emit_return();
+        } else {
+            if current().type_ == FunctionType::Initializer {
+                self.error("Can't return a value from an initializer.");
+            }
+
+            self.expression();
+            self.consume(TokenType::Semicolon, "Expect ';' after return value.");
+            self.emit_byte(OpCode::Return as u8);
+        }
+    }
+
+
+    // if 语句
+    fn if_statement(&self) {
+        self.consume(TokenType::LeftParen, "Expect '(' after 'if'.");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after condition.");
+
+        // then 分支跳转点
+        let then_jump = self.emit_jump(OpCode::JumpIfFalse as u8);
+        // 如果为false 这个 pop不会被执行  会执行下面的pop
+        // 如果为 true 执行这个pop之后 跳过实体else 或者空else(只有一个pop)
+        // 弹出条件表达式
+        self.emit_byte(OpCode::Pop as u8);
+        self.statement();
+
+        // else 分支跳转点
+        let else_jump = self.emit_jump(OpCode::Jump as u8);
+        // 回写then分支跳转的长度回写
+        self.patch_jump(then_jump);
+
+        // 弹出条件表达式
+        self.emit_byte(OpCode::Pop as u8);
+        // then 分支过后探查 是否有else 这个if不触发的话则跳转一个 空else
+        if self.match_(TokenType::Else) {
+            self.statement();
+        }
+        // else分支跳转长度回写
+        self.patch_jump(else_jump);
+    }
+
+
+    // for语句
+    fn for_statement(&self) {
+        self.begin_scope();
+        self.consume(TokenType::LeftParen, "Expect '(' after 'for'.");
+        // for 第一语句 只执行一次
+        if self.match_(TokenType::Semicolon) {
+            // No initializer.
+        } else if self.match_(TokenType::Var) {
+            self.var_declaration();
+        } else {
+            self.expression_statement();
+        }
+        // 循环起点
+        let mut loop_start = current_chunk().count() as i32;
+        // for的第二语句  表达式语句
+        let mut exit_jump = -1;
+        if !self.match_(TokenType::Semicolon) {
+            self.expression();
+            self.consume(TokenType::Semicolon, "Expect ';' after loop condition.");
+
+            // Jump out of the loop if the condition is false.
+            exit_jump = self.emit_jump(OpCode::JumpIfFalse as u8) as i32;
+            self.emit_byte(OpCode::Pop as u8); // Condition.
+        }
+
+        // for的第三语句 增量子句
+        if !self.match_(TokenType::RightParen) {
+            let body_jump = self.emit_jump(OpCode::Jump as u8);
+            let increment_start = current_chunk().count() as i32;
+            self.expression();
+            self.emit_byte(OpCode::Pop as u8);
+            self.consume(TokenType::RightParen, "Expect ')' after for clauses.");
+
+            self.emit_loop(loop_start);
+            loop_start = increment_start;
+            self.patch_jump(body_jump);
+        }
+
+        // for 主体
+        self.statement();
+        self.emit_loop(loop_start);
+
+        // 修复跳跃
+        if exit_jump != -1 {
+            self.patch_jump(exit_jump as usize);
+            self.emit_byte(OpCode::Pop as u8);
+        }
+
+        self.end_scope();
+    }
+
+    // 写入循环指令
+    fn emit_loop(&self, loop_start: i32) {
+        self.emit_byte(OpCode::Loop as u8);
+
+        let offset = (current_chunk().count() - loop_start as usize) + 2;
+        if offset > u16::MAX as usize {
+            self.error("Loop body too large.");
+        }
+
+        self.emit_byte(((offset >> 8) & 0xff) as u8);
+        self.emit_byte((offset & 0xff) as u8);
+    }
+
+    // print 语句
+    fn print_statement(&self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after value.");
+        self.emit_byte(OpCode::Print as u8);
+    }
+
     fn expression(&mut self) {
         self.parse_precedence(Precedence::Assignment);
     }
@@ -595,7 +766,7 @@ impl Compiler {
 
     // 逻辑与
     fn and(&'static mut self, can_assign: bool) {
-        let end_jump = self.emit_jump(OpCode::JumpIfFalse);
+        let end_jump = self.emit_jump(OpCode::JumpIfFalse as u8);
 
         self.emit_byte(OpCode::Pop as u8);
         self.parse_precedence(Precedence::And);
@@ -606,18 +777,17 @@ impl Compiler {
     // 字符表达式
     fn literal(&'static mut self, can_assign: bool) {
         match vm().parser.previous.type_ {
-            TokenType::False => self.emit_byte(OpCode::False),
-            TokenType::Nil => self.emit_byte(OpCode::Nil),
-            TokenType::True => self.emit_byte(OpCode::True),
+            TokenType::False => self.emit_byte(OpCode::False as u8),
+            TokenType::Nil => self.emit_byte(OpCode::Nil as u8),
+            TokenType::True => self.emit_byte(OpCode::True as u8),
             _ => return, // Unreachable.
         }
     }
 
-    
     // 逻辑或
     fn or(&'static mut self, can_assign: bool) {
-        let else_jump = self.emit_jump(OpCode::JumpIfFalse);
-        let end_jump = self.emit_jump(OpCode::Jump);
+        let else_jump = self.emit_jump(OpCode::JumpIfFalse as u8);
+        let end_jump = self.emit_jump(OpCode::Jump as u8);
 
         self.patch_jump(else_jump);
         self.emit_byte(OpCode::Pop as u8);
@@ -630,7 +800,7 @@ impl Compiler {
     fn super_(&'static mut self, can_assign: bool) {
         if vm().class_compiler.is_null() {
             self.error("Can't use 'super' outside of a class.");
-        } else if !vm().class_compiler.has_superclass {
+        } else if !(unsafe { *vm().class_compiler }).has_superclass {
             self.error("Can't use 'super' in a class with no superclass.");
         }
 
@@ -638,15 +808,15 @@ impl Compiler {
         self.consume(TokenType::Identifier, "Expect superclass method name.");
         let name = self.identifier_constant(&vm().parser.previous);
 
-        self.named_variable(self.synthetic_token("this"), false);
+        self.named_variable(&synthetic_token("this"), false);
         if self.match_(TokenType::LeftParen) {
             let arg_count = self.argument_list();
-            self.named_variable(self.synthetic_token("super"), false);
-            self.emit_bytes(OpCode::SuperInvoke, name);
+            self.named_variable(&synthetic_token("super"), false);
+            self.emit_bytes(OpCode::SuperInvoke as u8, name);
             self.emit_byte(arg_count);
         } else {
-            self.named_variable(self.synthetic_token("super"), false);
-            self.emit_bytes(OpCode::GetSuper, name);
+            self.named_variable(&synthetic_token("super"), false);
+            self.emit_bytes(OpCode::GetSuper as u8, name);
         }
     }
 
@@ -658,6 +828,10 @@ impl Compiler {
         }
 
         self.variable(false);
+    }
+
+    fn emit_constant(&self, value: Value) {
+        self.emit_bytes(OpCode::Constant as u8, self.make_constant(value));
     }
 
     fn parse_precedence(&mut self, precedence: Precedence) {
@@ -960,10 +1134,6 @@ impl Compiler {
         return -1;
     }
 
-    fn variable(&self, can_assign: bool) {
-        self.named_variable(&vm().parser.previous, can_assign);
-    }
-
     fn define_variable(&self, global: u8) {
         if current().scope_depth > 0 {
             mark_initialized();
@@ -994,13 +1164,13 @@ impl Compiler {
         let jump = current_chunk().count() - offset - 2;
 
         // 最大只能跳转两个字节的字节码
-        if jump > u16::MAX {
+        if jump > u16::MAX as usize {
             self.error("Too much code to jump over.");
         }
 
         // 回写需要跳过的大小
-        current_chunk().code[offset] = (jump >> 8) & 0xff;
-        current_chunk().code[offset + 1] = jump & 0xff;
+        current_chunk().code[offset] = ((jump >> 8) & 0xff) as u8;
+        current_chunk().code[offset + 1] = (jump & 0xff) as u8;
     }
 
     fn declare_variable(&self) {
