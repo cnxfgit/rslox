@@ -1,6 +1,5 @@
 use std::collections::HashMap;
-use std::ptr::null_mut;
-use std::result;
+use std::ptr::{self, null_mut};
 use std::time::Instant;
 
 use crate::chunk::OpCode;
@@ -13,7 +12,8 @@ use crate::scanner::Scanner;
 use crate::table::Table;
 use crate::value::Value;
 use crate::{
-    as_class, as_closure, as_instance, as_number, as_obj, as_string, is_instance, is_number, is_string, obj_val
+    as_bound_method, as_class, as_closure, as_function, as_instance, as_native, as_number, as_obj,
+    as_string, is_class, is_instance, is_number, is_obj, is_string, obj_val,
 };
 
 pub const UINT8_COUNT: usize = u8::MAX as usize + 1;
@@ -104,6 +104,15 @@ macro_rules! read_constant {
     };
 }
 
+macro_rules! read_short {
+    ($frame:expr) => {
+        unsafe {
+            (*$frame).ip = (*$frame).ip.add(2);
+            (*((*$frame).ip.sub(2)) << 8) as u16 | *(*$frame).ip.sub(1) as u16
+        }
+    };
+}
+
 macro_rules! read_string {
     ($frame:expr) => {
         as_string!(read_constant!($frame))
@@ -116,32 +125,40 @@ macro_rules! create_value {
     };
     (bool) => {
         Value::Boolean
-    }
+    };
 }
 
 macro_rules! binary_op {
     ($vm:expr, $value_type:tt, $op:tt) => {{
         match ($vm.peek(0), $vm.peek(1)) {
             (Value::Number(_), Value::Number(_)) => {
-                let b = $vm.pop(); 
-                let a = $vm.pop(); 
+                let b = $vm.pop();
+                let a = $vm.pop();
                 if let (Value::Number(n1), Value::Number(n2)) = (a, b) {
                     let value = n1 $op n2;
-                    $vm.push(create_value!($value_type)(value)); 
+                    $vm.push(create_value!($value_type)(value));
                 }
             }
             _ => {
-                $vm.runtime_error("Operands must be numbers.".into()); 
-                return InterpretResult::RuntimeError; 
+                $vm.runtime_error("Operands must be numbers.".into());
+                return InterpretResult::RuntimeError;
             }
         }
     }};
 }
 
-fn clock_native(arg_count: usize, args: *mut Value) -> Value {
+fn clock_native(_arg_count: usize, _args: *mut Value) -> Value {
     let now = Instant::now();
     let secs = now.elapsed().as_secs_f64();
     Value::Number(secs)
+}
+
+fn is_falsey(value: Value) -> bool {
+    match value {
+        Value::Nil => true,
+        Value::Boolean(b) => !b,
+        _ => true,
+    }
 }
 
 fn values_equal(a: Value, b: Value) -> bool {
@@ -191,10 +208,11 @@ impl VM {
         vm
     }
 
-    fn define_native(&self, name: &str, function: NativeFn) {
+    fn define_native(&mut self, name: &str, function: NativeFn) {
         self.push(obj_val!(ObjString::take_string(name.into())));
         self.push(obj_val!(ObjNative::new(function)));
-        self.globals.set(as_string!(self.stack[0]), self.stack[1]);
+        self.globals
+            .set(as_string!(self.stack[0].clone()), self.stack[1]);
         self.pop();
         self.pop();
     }
@@ -226,25 +244,25 @@ impl VM {
         let mut i = self.frame_count - 1;
         while i >= 0 {
             let frame = &self.frames[i];
-            let function = (unsafe { *frame.closure }).function;
+            let function = unsafe { (*(*frame).closure).function };
             let instruction =
-                frame.ip as usize - (unsafe { *function }).chunk.code.as_mut_ptr() as usize - 1;
+                frame.ip as usize - unsafe {( *function ).chunk.code.as_mut_ptr() } as usize - 1;
             eprint!(
                 "[line {}] in ",
-                unsafe { *function }.chunk.lines[instruction]
+                unsafe { (*function).chunk.lines[instruction] }
             );
-            if (unsafe { *function }).name.is_null() {
+            if unsafe { (*function).name.is_null() } {
                 eprintln!("script");
             } else {
-                eprintln!("{}()", unsafe { *(*function).name }.chars);
+                eprintln!("{}()", unsafe { &(*(*function).name).chars });
             }
             i -= 1;
         }
         self.reset_stack();
     }
 
-    fn call(&self, closure: *mut ObjClosure, arg_count: usize) -> bool {
-        let arity = (unsafe { *(*closure).function }).arity;
+    fn call(&mut self, closure: *mut ObjClosure, arg_count: usize) -> bool {
+        let arity = unsafe { (*(*closure).function).arity };
         if arg_count != arity {
             self.runtime_error(format!(
                 "Expected {} arguments but got {}.",
@@ -258,18 +276,21 @@ impl VM {
             return false;
         }
         // 记录新函数栈帧
-        let frame = &self.frames[self.frame_count];
+        let frame = &mut self.frames[self.frame_count];
         self.frame_count += 1;
-        frame.closure = closure;
-        frame.ip = (unsafe { *(*closure).function }).chunk.code.as_mut_ptr();
-        frame.slots = unsafe { self.stack_top.sub(arg_count + 1) };
+        let frame = frame as *mut CallFrame;
+        unsafe {
+            (*frame).closure = closure;
+            (*frame).ip = ( *(*closure).function ).chunk.code.as_mut_ptr();
+            (*frame).slots =  self.stack_top.sub(arg_count + 1) ;   
+        }
 
         true
     }
 
     fn run(&mut self) -> InterpretResult {
         // 拿到vm中的栈帧
-        let frame = &mut self.frames[self.frame_count - 1] as *mut CallFrame;
+        let mut frame = &mut self.frames[self.frame_count - 1] as *mut CallFrame;
 
         loop {
             #[cfg(feature = "debug_trace_execution")]
@@ -302,7 +323,9 @@ impl VM {
                 OpCode::Nil => self.push(Value::Nil),
                 OpCode::True => self.push(Value::Boolean(true)),
                 OpCode::False => self.push(Value::Boolean(false)),
-                OpCode::Pop => self.pop(),
+                OpCode::Pop => {
+                    self.pop();
+                }
                 OpCode::GetLocal => {
                     let slot = read_byte!(frame);
                     unsafe {
@@ -412,38 +435,282 @@ impl VM {
                         let a = as_number!(self.pop());
                         self.push(Value::Number(a + b));
                     } else {
-                        self.runtime_error( "Operands must be two numbers or two strings.".into());
+                        self.runtime_error("Operands must be two numbers or two strings.".into());
                         return InterpretResult::RuntimeError;
                     }
                 }
                 OpCode::Subtract => binary_op!(self, f64, -),
                 OpCode::Multiply => binary_op!(self, f64, *),
                 OpCode::Divide => binary_op!(self, f64, /),
-                _ => {break;}
+                OpCode::Not => self.push(Value::Boolean(is_falsey(self.pop()))),
+                OpCode::Negate => {
+                    if !is_number!(self.peek(0)) {
+                        self.runtime_error("Operand must be a number.".into());
+                        return InterpretResult::RuntimeError;
+                    }
+                    self.push(Value::Number(-as_number!(self.pop())));
+                }
+                OpCode::Print => {
+                    self.pop().print();
+                    println!("");
+                }
+                OpCode::Jump => {
+                    let offset = read_short!(frame);
+                    unsafe {
+                        (*frame).ip = (*frame).ip.add(offset as usize);
+                    }
+                }
+                OpCode::JumpIfFalse => {
+                    let offset = read_short!(frame);
+                    if is_falsey(self.peek(0)) {
+                        unsafe {
+                            (*frame).ip = (*frame).ip.add(offset as usize);
+                        }
+                    }
+                }
+                OpCode::Loop => {
+                    let offset = read_short!(frame);
+                    unsafe {
+                        (*frame).ip = (*frame).ip.sub(offset as usize);
+                    }
+                }
+                OpCode::Call => {
+                    let arg_count = read_byte!(frame);
+                    if !self.call_value(self.peek(arg_count as i32), arg_count) {
+                        return InterpretResult::RuntimeError;
+                    }
+
+                    // 调用成功后将栈帧还回去
+                    frame = &mut self.frames[self.frame_count - 1];
+                }
+                OpCode::Invoke => {
+                    let method = read_string!(frame);
+                    let arg_count = read_byte!(frame);
+                    if !self.invoke(method, arg_count) {
+                        return InterpretResult::RuntimeError;
+                    }
+                    frame = &mut self.frames[self.frame_count - 1];
+                }
+                OpCode::SuperInvoke => {
+                    let method = read_string!(frame);
+                    let arg_count = read_byte!(frame);
+                    let superclass = as_class!(self.pop());
+                    if !self.invoke_from_class(superclass, method, arg_count) {
+                        return InterpretResult::RuntimeError;
+                    }
+                    frame = &mut self.frames[self.frame_count - 1];
+                }
+                OpCode::Closure => {
+                    let function = as_function!(read_constant!(frame));
+                    let closure = ObjClosure::new(function);
+                    self.push(Value::Object(closure as *mut Obj));
+
+                    let mut i = 0;
+                    while i < (unsafe { *closure }).upvalue_count {
+                        let is_local = read_byte!(frame);
+                        let index = read_byte!(frame);
+                        unsafe {
+                            if is_local != 0 {
+                                let ptr = (*closure).upvalues.add(i);
+                                *ptr = self.capture_upvalue((*frame).slots.add(index as usize));
+                            } else {
+                                let ptr = (*closure).upvalues.add(i);
+                                *ptr = *(*(*frame).closure).upvalues.add(index as usize);
+                            }
+                        }
+                        i += 1;
+                    }
+                }
+                OpCode::CloseUpvalue => {
+                    self.close_upvalues(unsafe { self.stack_top.sub(1) });
+                    self.pop();
+                }
+                OpCode::Return => {
+                    let result = self.pop();
+                    self.close_upvalues((unsafe { *frame }).slots);
+                    self.frame_count -= 1;
+                    if self.frame_count == 0 {
+                        self.pop();
+                        return InterpretResult::Ok;
+                    }
+
+                    self.stack_top = (unsafe { *frame }).slots;
+                    self.push(result);
+                    frame = &mut self.frames[self.frame_count - 1];
+                }
+                OpCode::Class => {
+                    self.push(Value::Object(ObjClass::new(read_string!(frame)) as *mut Obj))
+                }
+                OpCode::Inherit => {
+                    let superclass = self.peek(1);
+                    if !is_class!(superclass) {
+                        self.runtime_error("Superclass must be a class.".into());
+                        return InterpretResult::RuntimeError;
+                    }
+
+                    let subclass = as_class!(self.peek(0));
+                    unsafe {
+                        (*(*subclass).methods).add_all(&*(*as_class!(superclass)).methods);
+                    }
+                    self.pop(); // Subclass.
+                }
+                OpCode::Method => self.define_method(read_string!(frame)),
+
+                _ => {
+                    break;
+                }
             }
         }
 
         InterpretResult::Ok
     }
 
+    fn define_method(&mut self, name: *mut ObjString) {
+        let method = self.peek(0);
+        let class = as_class!(self.peek(1));
+        (unsafe { *(*class).methods }).set(name, method);
+        self.pop();
+    }
+
+    fn close_upvalues(&mut self, last: *mut Value) {
+        unsafe {
+            while !self.open_upvalues.is_null() && (*self.open_upvalues).location >= last {
+                let upvalue = self.open_upvalues;
+                (*upvalue).closed = *(*upvalue).location;
+                (*upvalue).location = &mut (*upvalue).closed;
+                self.open_upvalues = (*upvalue).next;
+            }
+        }
+    }
+
+    // 捕获提升值
+    fn capture_upvalue(&mut self, local: *mut Value) -> *mut ObjUpvalue {
+        let mut prev_upvalue: *mut ObjUpvalue = null_mut();
+        let mut upvalue = self.open_upvalues;
+        while !upvalue.is_null() && (unsafe { *upvalue }).location > local {
+            prev_upvalue = upvalue;
+            upvalue = unsafe { (*upvalue) }.next;
+        }
+
+        if !upvalue.is_null() && (unsafe { *upvalue }).location == local {
+            return upvalue;
+        }
+
+        let created_upvalue = ObjUpvalue::new(local);
+
+        (unsafe { *created_upvalue }).next = upvalue;
+
+        if prev_upvalue.is_null() {
+            self.open_upvalues = created_upvalue;
+        } else {
+            (unsafe { *prev_upvalue }).next = created_upvalue;
+        }
+
+        created_upvalue
+    }
+
+    fn invoke(&mut self, name: *mut ObjString, arg_count: u8) -> bool {
+        let receiver = self.peek(arg_count as i32);
+
+        if !is_instance!(receiver) {
+            self.runtime_error("Only instances have methods.".into());
+            return false;
+        }
+
+        let instance = as_instance!(receiver);
+        if let Some(value) = (unsafe { *(*instance).fields }).get(name) {
+            unsafe {
+                std::ptr::write(
+                    self.stack_top.offset(-(arg_count as isize) - 1),
+                    value.clone(),
+                );
+            }
+            return self.call_value(value.clone(), arg_count);
+        }
+        return self.invoke_from_class((unsafe { *instance }).class, name, arg_count);
+    }
+
+    fn invoke_from_class(&mut self, class: *mut ObjClass, name: *mut ObjString, arg_count: u8) -> bool {
+        if let Some(method) = (unsafe { *(*class).methods }).get(name) {
+            self.call(as_closure!(method), arg_count as usize)
+        } else {
+            self.runtime_error(format!(
+                "Undefined property '{}'.",
+                &(unsafe { *name }).chars
+            ));
+            false
+        }
+    }
+
+    // 调用 值类型  仅接受 函数 类 方法
+    fn call_value(&mut self, callee: Value, arg_count: u8) -> bool {
+        if is_obj!(callee) {
+            match (unsafe { *as_obj!(callee) }).type_ {
+                ObjType::BoundMethod => {
+                    let bound = as_bound_method!(callee);
+                    unsafe {
+                        let ptr = self.stack_top.offset(-(arg_count as isize) - 1);
+                        std::ptr::write(ptr, (*bound).receiver);
+                        return self.call((*bound).method, arg_count as usize);
+                    }
+                }
+                ObjType::Class => {
+                    let class = as_class!(callee);
+                    unsafe {
+                        let ptr = self.stack_top.offset(-(arg_count as isize) - 1);
+                        std::ptr::write(ptr, Value::Object(ObjInstance::new(class) as *mut Obj));
+                    }
+
+                    match unsafe { *(*class).methods }.get(self.init_string) {
+                        Some(initializer) => {
+                            return self.call(as_closure!(initializer.clone()), arg_count as usize);
+                        }
+                        None => {
+                            if arg_count != 0 {
+                                self.runtime_error(format!(
+                                    "Expected 0 arguments but got {}.",
+                                    arg_count
+                                ));
+                                return false;
+                            }
+                            return true;
+                        }
+                    }
+                }
+                ObjType::Closure => return self.call(as_closure!(callee), arg_count as usize),
+                ObjType::Native => {
+                    let native = as_native!(callee);
+                    let result = native(arg_count as usize, unsafe {
+                        self.stack_top.sub(arg_count as usize)
+                    });
+                    self.stack_top = unsafe { self.stack_top.sub((arg_count + 1) as usize) };
+                    self.push(result);
+                    return true;
+                }
+                _ => {} // Non-callable object type.
+            }
+        }
+        self.runtime_error("Can only call functions and classes.".into());
+        false
+    }
+
     // 连接字符串
-    fn concatenate(&self) {
+    fn concatenate(&mut self) {
         let b = as_string!(self.peek(0));
         let a = as_string!(self.peek(1));
-    
-        
+
         unsafe {
             let result = String::new();
             let result = ObjString::take_string(result + &(*a).chars + &(*b).chars);
 
             self.pop();
             self.pop();
-    
+
             self.push(Value::Object(result as *mut Obj));
         }
     }
 
-    fn bind_method(&self, class: *mut ObjClass, name: *mut ObjString) -> bool {
+    fn bind_method(&mut self, class: *mut ObjClass, name: *mut ObjString) -> bool {
         unsafe {
             if let Some(method) = (*(*class).methods).get(name) {
                 let bound = ObjBoundMethod::new(self.peek(0), as_closure!(method.clone()));

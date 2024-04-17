@@ -20,14 +20,14 @@ impl Table {
         self.map.get(&key)
     }
 
-    pub fn set(&self, key: *mut ObjString, value: Value) -> bool {
+    pub fn set(&mut self, key: *mut ObjString, value: Value) -> bool {
         match self.map.insert(key, value) {
             Some(_) => false,
             None => true
         }
     }
 
-    pub fn remove(&self, key: *mut ObjString) {
+    pub fn remove(&mut self, key: *mut ObjString) {
         self.map.remove(&key);
     }
 
@@ -38,5 +38,9 @@ impl Table {
             }
             None => None
         }
+    }
+
+    pub fn add_all(&mut self, from: &Table) {
+        self.map.extend(from.map.clone().into_iter())
     }
 }

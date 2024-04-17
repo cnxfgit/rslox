@@ -1,8 +1,9 @@
 use std::ptr::null_mut;
 
 use crate::{
-    chunk::{Chunk, OpCode},obj_val,
-    object::{ObjFunction, ObjString, Obj},
+    chunk::{Chunk, OpCode},
+    obj_val,
+    object::{Obj, ObjFunction, ObjString},
     scanner::{Token, TokenType},
     value::Value,
     vm::{vm, UINT8_COUNT},
@@ -251,7 +252,7 @@ static RULES: [ParseRule; 40] = [
     },
 ];
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 // 函数类型
 pub enum FunctionType {
     Function,    // 正常函数
@@ -327,6 +328,7 @@ impl From<i32> for Precedence {
             8 => Precedence::Unary,
             9 => Precedence::Call,
             10 => Precedence::Primary,
+            _ => panic!("error Precedence!"),
         }
     }
 }
@@ -394,8 +396,8 @@ fn current_chunk() -> &'static Chunk {
     unsafe { &(*(*vm().current_compiler).function).chunk }
 }
 
-fn current() -> &'static Compiler {
-    &(unsafe { *vm().current_compiler })
+fn current() -> &'static mut Compiler {
+    unsafe { &mut (*vm().current_compiler) }
 }
 
 fn identifiers_equal(a: &Token, b: &Token) -> bool {
@@ -421,8 +423,8 @@ fn synthetic_token(text: &str) -> Token {
     token
 }
 
-fn get_rule(type_: TokenType) -> ParseRule {
-    RULES[type_ as usize]
+fn get_rule(type_: TokenType) -> &'static ParseRule {
+    &RULES[type_ as usize]
 }
 
 impl Compiler {
@@ -437,10 +439,9 @@ impl Compiler {
             scope_depth: 0,
         };
 
-        unsafe { vm().current_compiler = &mut compiler as *mut Compiler }
+        vm().current_compiler = &mut compiler as *mut Compiler;
 
-        if let type_ = FunctionType::Script {
-        } else {
+        if type_ != FunctionType::Script {
             let start = vm().parser.previous.start;
             let length = vm().parser.previous.length;
             (unsafe { *compiler.function }).name = ObjString::take_string(
@@ -484,7 +485,7 @@ impl Compiler {
         }
     }
 
-    fn match_(&self, type_: TokenType) -> bool {
+    fn match_(&mut self, type_: TokenType) -> bool {
         if !check(type_) {
             return false;
         }
@@ -492,7 +493,7 @@ impl Compiler {
         true
     }
 
-    fn declaration(&self) {
+    fn declaration(&mut self) {
         if self.match_(TokenType::Class) {
             self.class_declaration();
         } else if self.match_(TokenType::Fun) {
@@ -510,7 +511,7 @@ impl Compiler {
     }
 
     // 语句
-    fn statement(&self) {
+    fn statement(&mut self) {
         if self.match_(TokenType::Print) {
             self.print_statement();
         } else if self.match_(TokenType::For) {
@@ -531,15 +532,14 @@ impl Compiler {
     }
 
     // 表达式语句
-    fn expression_statement(&self) {
+    fn expression_statement(&mut self) {
         self.expression();
         self.consume(TokenType::Semicolon, "Expect ';' after expression.");
         self.emit_byte(OpCode::Pop as u8);
     }
 
-
     // while 语句
-    fn while_statement(&self) {
+    fn while_statement(&mut self) {
         // 循环起点
         let loop_start = current_chunk().count();
         self.consume(TokenType::LeftParen, "Expect '(' after 'while'.");
@@ -577,7 +577,6 @@ impl Compiler {
         }
     }
 
-
     // if 语句
     fn if_statement(&self) {
         self.consume(TokenType::LeftParen, "Expect '(' after 'if'.");
@@ -606,7 +605,6 @@ impl Compiler {
         // else分支跳转长度回写
         self.patch_jump(else_jump);
     }
-
 
     // for语句
     fn for_statement(&self) {
@@ -1265,7 +1263,7 @@ impl Compiler {
         }
     }
 
-    pub fn compile(&self) -> *mut ObjFunction {
+    pub fn compile(&mut self) -> *mut ObjFunction {
         self.advance();
 
         while !self.match_(TokenType::Eof) {
