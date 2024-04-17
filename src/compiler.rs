@@ -268,16 +268,6 @@ struct Local {
     is_captured: bool, // 是否被捕获
 }
 
-impl Local {
-    fn new() -> Local {
-        Local {
-            name: Token::default(),
-            depth: 0,
-            is_captured: false,
-        }
-    }
-}
-
 // 提升值
 #[derive(Clone, Copy)]
 struct Upvalue {
@@ -285,15 +275,7 @@ struct Upvalue {
     is_local: bool, // 是否为局部变量
 }
 
-impl Upvalue {
-    fn new() -> Upvalue {
-        Upvalue {
-            index: 0,
-            is_local: false,
-        }
-    }
-}
-
+#[derive(Clone, Copy)]
 enum Precedence {
     None = 0,
     Assignment, // =
@@ -334,7 +316,7 @@ impl From<i32> for Precedence {
 }
 
 // 声明返回值为 void 函数指针 ParseFn
-type ParseFn = fn(&'static mut Compiler, bool) -> ();
+type ParseFn = fn(&mut Compiler, bool) -> ();
 
 // 解析规则
 struct ParseRule {
@@ -392,8 +374,8 @@ fn check(type_: TokenType) -> bool {
     vm().parser.current.type_ == type_
 }
 
-fn current_chunk() -> &'static Chunk {
-    unsafe { &(*(*vm().current_compiler).function).chunk }
+fn current_chunk() -> &'static mut Chunk {
+    unsafe { &mut (*(*vm().current_compiler).function).chunk }
 }
 
 fn current() -> &'static mut Compiler {
@@ -444,16 +426,19 @@ impl Compiler {
         if type_ != FunctionType::Script {
             let start = vm().parser.previous.start;
             let length = vm().parser.previous.length;
-            (unsafe { *compiler.function }).name = ObjString::take_string(
-                String::from_utf8(
-                    vm().scanner.unwrap().source.as_bytes()[start..start + length].to_vec(),
-                )
-                .unwrap(),
-            );
+            unsafe {
+                (*compiler.function).name = ObjString::take_string(
+                    String::from_utf8(
+                        vm().scanner.as_ref().unwrap().source.as_bytes()[start..start + length]
+                            .to_vec(),
+                    )
+                    .unwrap(),
+                );
+            }
         }
 
         // 局部插槽将空字符串占用 无法显式使用
-        let local = &compiler.locals[compiler.local_count];
+        let local = &mut compiler.locals[compiler.local_count];
         compiler.local_count += 1;
         local.depth = 0;
         local.is_captured = false;
@@ -472,10 +457,10 @@ impl Compiler {
     }
 
     fn advance(&mut self) {
-        vm().parser.previous = vm().parser.current;
+        vm().parser.previous = vm().parser.current.clone();
 
         loop {
-            vm().parser.current = vm().scanner.unwrap().scan_token();
+            vm().parser.current = vm().scanner.as_mut().unwrap().scan_token();
             if let TokenType::Error = vm().parser.current.type_ {
             } else {
                 break;
@@ -559,7 +544,7 @@ impl Compiler {
     }
 
     // 返回语句
-    fn return_statement(&self) {
+    fn return_statement(&mut self) {
         if current().type_ == FunctionType::Script {
             self.error("Can't return from top-level code.");
         }
@@ -578,7 +563,7 @@ impl Compiler {
     }
 
     // if 语句
-    fn if_statement(&self) {
+    fn if_statement(&mut self) {
         self.consume(TokenType::LeftParen, "Expect '(' after 'if'.");
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after condition.");
@@ -607,7 +592,7 @@ impl Compiler {
     }
 
     // for语句
-    fn for_statement(&self) {
+    fn for_statement(&mut self) {
         self.begin_scope();
         self.consume(TokenType::LeftParen, "Expect '(' after 'for'.");
         // for 第一语句 只执行一次
@@ -658,7 +643,7 @@ impl Compiler {
     }
 
     // 写入循环指令
-    fn emit_loop(&self, loop_start: i32) {
+    fn emit_loop(&mut self, loop_start: i32) {
         self.emit_byte(OpCode::Loop as u8);
 
         let offset = (current_chunk().count() - loop_start as usize) + 2;
@@ -671,7 +656,7 @@ impl Compiler {
     }
 
     // print 语句
-    fn print_statement(&self) {
+    fn print_statement(&mut self) {
         self.expression();
         self.consume(TokenType::Semicolon, "Expect ';' after value.");
         self.emit_byte(OpCode::Print as u8);
@@ -681,17 +666,17 @@ impl Compiler {
         self.parse_precedence(Precedence::Assignment);
     }
 
-    fn grouping(&'static mut self, can_assign: bool) {
+    fn grouping(&mut self, _can_assign: bool) {
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after expression.");
     }
 
-    fn call(&'static mut self, can_assign: bool) {
+    fn call(&mut self, _can_assign: bool) {
         let arg_count = self.argument_list();
         self.emit_bytes(OpCode::Call as u8, arg_count);
     }
 
-    fn dot(&'static mut self, can_assign: bool) {
+    fn dot(&mut self, can_assign: bool) {
         self.consume(TokenType::Identifier, "Expect property name after '.'.");
         let name = self.identifier_constant(&vm().parser.previous);
 
@@ -708,7 +693,7 @@ impl Compiler {
     }
 
     // 一元表达式
-    fn unary(&'static mut self, can_assign: bool) {
+    fn unary(&mut self, _can_assign: bool) {
         let operator_type = vm().parser.previous.type_;
 
         // Compile the operand.
@@ -723,7 +708,7 @@ impl Compiler {
     }
 
     // 二元表达式
-    fn binary(&'static mut self, can_assign: bool) {
+    fn binary(&mut self, _can_assign: bool) {
         let operator_type = vm().parser.previous.type_;
         let rule = get_rule(operator_type);
         self.parse_precedence((rule.precedence as i32 + 1).into());
@@ -744,25 +729,25 @@ impl Compiler {
     }
 
     // 标识符表达式
-    fn variable(&'static mut self, can_assign: bool) {
+    fn variable(&mut self, can_assign: bool) {
         self.named_variable(&vm().parser.previous, can_assign);
     }
 
     // 字符串表达式
-    fn string(&'static mut self, can_assign: bool) {
+    fn string(&mut self, _can_assign: bool) {
         self.emit_constant(obj_val!(ObjString::take_string(
-            vm().parser.previous.message
+            vm().parser.previous.message.clone()
         )));
     }
 
     // 数字表达式
-    fn number(&'static mut self, can_assign: bool) {
+    fn number(&mut self, _can_assign: bool) {
         let value = vm().parser.previous.message.parse::<f64>().unwrap();
         self.emit_constant(Value::Number(value));
     }
 
     // 逻辑与
-    fn and(&'static mut self, can_assign: bool) {
+    fn and(&mut self, _can_assign: bool) {
         let end_jump = self.emit_jump(OpCode::JumpIfFalse as u8);
 
         self.emit_byte(OpCode::Pop as u8);
@@ -772,7 +757,7 @@ impl Compiler {
     }
 
     // 字符表达式
-    fn literal(&'static mut self, can_assign: bool) {
+    fn literal(&mut self, _can_assign: bool) {
         match vm().parser.previous.type_ {
             TokenType::False => self.emit_byte(OpCode::False as u8),
             TokenType::Nil => self.emit_byte(OpCode::Nil as u8),
@@ -782,7 +767,7 @@ impl Compiler {
     }
 
     // 逻辑或
-    fn or(&'static mut self, can_assign: bool) {
+    fn or(&mut self, _can_assign: bool) {
         let else_jump = self.emit_jump(OpCode::JumpIfFalse as u8);
         let end_jump = self.emit_jump(OpCode::Jump as u8);
 
@@ -794,10 +779,10 @@ impl Compiler {
     }
 
     // 父类
-    fn super_(&'static mut self, can_assign: bool) {
+    fn super_(&mut self, _can_assign: bool) {
         if vm().class_compiler.is_null() {
             self.error("Can't use 'super' outside of a class.");
-        } else if !(unsafe { *vm().class_compiler }).has_superclass {
+        } else if !unsafe { (*vm().class_compiler).has_superclass } {
             self.error("Can't use 'super' in a class with no superclass.");
         }
 
@@ -818,7 +803,7 @@ impl Compiler {
     }
 
     // this局部变量
-    fn this(&'static mut self, can_assign: bool) {
+    fn this(&mut self, _can_assign: bool) {
         if vm().class_compiler.is_null() {
             self.error("Can't use 'this' outside of a class.");
             return;
@@ -827,8 +812,9 @@ impl Compiler {
         self.variable(false);
     }
 
-    fn emit_constant(&self, value: Value) {
-        self.emit_bytes(OpCode::Constant as u8, self.make_constant(value));
+    fn emit_constant(&mut self, value: Value) {
+        let b = self.make_constant(value);
+        self.emit_bytes(OpCode::Constant as u8, b);
     }
 
     fn parse_precedence(&mut self, precedence: Precedence) {
@@ -897,9 +883,9 @@ impl Compiler {
         self.define_variable(global);
     }
 
-    fn class_declaration(&self) {
+    fn class_declaration(&mut self) {
         self.consume(TokenType::Identifier, "Expect class name.");
-        let class_name = vm().parser.previous;
+        let class_name = vm().parser.previous.clone();
         let name_constant = self.identifier_constant(&vm().parser.previous);
         self.declare_variable();
 
@@ -972,8 +958,8 @@ impl Compiler {
 
         #[cfg(feature = "debug_print_code")]
         if !vm().parser.had_error {
-            let mut name;
-            if (unsafe { *function }).name.is_null() {
+            let name;
+            if unsafe { (*function).name.is_null() } {
                 name = "<script>"
             } else {
                 unsafe {
@@ -1004,8 +990,8 @@ impl Compiler {
         self.consume(TokenType::LeftParen, "Expect '(' after function name.");
         if !check(TokenType::RightParen) {
             loop {
-                (unsafe { *current().function }).arity += 1;
-                if (unsafe { *current().function }).arity > 255 {
+                unsafe { (*current().function).arity += 1 };
+                if unsafe { (*current().function).arity } > 255 {
                     self.error_at_current("Can't have more than 255 parameters.");
                 }
                 let constant = self.parse_variable("Expect parameter name.");
@@ -1020,14 +1006,12 @@ impl Compiler {
         self.block();
 
         let function = self.end_compiler();
-        self.emit_bytes(
-            OpCode::Closure as u8,
-            self.make_constant(obj_val!(function)),
-        );
+        let b = self.make_constant(obj_val!(function));
+        self.emit_bytes(OpCode::Closure as u8, b);
 
         let mut i = 0;
         loop {
-            if i >= (unsafe { *function }).upvalue_count {
+            if i >= unsafe { (*function).upvalue_count } {
                 break;
             }
 
@@ -1051,9 +1035,9 @@ impl Compiler {
         self.emit_bytes(OpCode::Method as u8, constant);
     }
 
-    fn named_variable(&self, name: &Token, can_assign: bool) {
-        let mut get_op: u8 = 0;
-        let mut set_op: u8 = 0;
+    fn named_variable(&mut self, name: &Token, can_assign: bool) {
+        let get_op: u8;
+        let set_op: u8;
         let mut arg = self.resolve_local(current(), &name);
         if arg != -1 {
             get_op = OpCode::GetLocal as u8;
@@ -1069,19 +1053,29 @@ impl Compiler {
                 set_op = OpCode::SetGlobal as u8;
             }
         }
+
+        // 接等号为赋值  反之为取值
+        if can_assign && self.match_(TokenType::Equal) {
+            self.expression();
+            self.emit_bytes(set_op, arg as u8);
+        } else {
+            self.emit_bytes(get_op, arg as u8);
+        }
     }
 
-    fn resolve_upvalue(&self, compiler: &Compiler, name: &Token) -> i32 {
+    fn resolve_upvalue(&mut self, compiler: &mut Compiler, name: &Token) -> i32 {
         if compiler.enclosing.is_null() {
             return -1;
         }
-        let local = self.resolve_local(&mut (unsafe { *compiler.enclosing }), name);
+        let local = self.resolve_local(unsafe { &mut (*compiler.enclosing) }, name);
         if local != -1 {
-            (unsafe { *compiler.enclosing }).locals[local as usize].is_captured = true;
+            unsafe {
+                (*compiler.enclosing).locals[local as usize].is_captured = true;
+            }
             return self.add_upvalue(compiler, local as u8, true);
         }
 
-        let upvalue = self.resolve_upvalue(&mut (unsafe { *compiler.enclosing }), name);
+        let upvalue = self.resolve_upvalue(unsafe { &mut (*compiler.enclosing) }, name);
         if upvalue != -1 {
             return self.add_upvalue(compiler, upvalue as u8, false);
         }
@@ -1089,8 +1083,8 @@ impl Compiler {
         return -1;
     }
 
-    fn add_upvalue(&self, compiler: &Compiler, index: u8, is_local: bool) -> i32 {
-        let upvalue_count = (unsafe { *compiler.function }).upvalue_count;
+    fn add_upvalue(&mut self, compiler: &mut Compiler, index: u8, is_local: bool) -> i32 {
+        let upvalue_count = unsafe { &mut (*compiler.function) }.upvalue_count;
 
         let mut i: i32 = 0;
         while i < upvalue_count as i32 {
@@ -1109,12 +1103,12 @@ impl Compiler {
 
         compiler.upvalues[upvalue_count].is_local = is_local;
         compiler.upvalues[upvalue_count].index = index;
-        let result = (unsafe { *compiler.function }).upvalue_count;
-        (unsafe { *compiler.function }).upvalue_count += 1;
+        let result = unsafe { (*compiler.function).upvalue_count };
+        unsafe { (*compiler.function).upvalue_count += 1 };
         result as i32
     }
 
-    fn resolve_local(&self, compiler: &Compiler, name: &Token) -> i32 {
+    fn resolve_local(&mut self, compiler: &Compiler, name: &Token) -> i32 {
         let mut i = (compiler.local_count - 1) as i32;
         while i >= 0 {
             let local = &compiler.locals[i as usize];
@@ -1131,7 +1125,7 @@ impl Compiler {
         return -1;
     }
 
-    fn define_variable(&self, global: u8) {
+    fn define_variable(&mut self, global: u8) {
         if current().scope_depth > 0 {
             mark_initialized();
             return;
@@ -1139,7 +1133,7 @@ impl Compiler {
         self.emit_bytes(OpCode::DefineGlobal as u8, global);
     }
 
-    fn emit_bytes(&self, byte1: u8, byte2: u8) {
+    fn emit_bytes(&mut self, byte1: u8, byte2: u8) {
         self.emit_byte(byte1);
         self.emit_byte(byte2);
     }
@@ -1156,7 +1150,7 @@ impl Compiler {
         current_chunk().count() - 2
     }
 
-    fn patch_jump(&self, offset: usize) {
+    fn patch_jump(&mut self, offset: usize) {
         // -offset得到 字节指令的位置  -2 再得到then语句的位置
         let jump = current_chunk().count() - offset - 2;
 
@@ -1170,7 +1164,7 @@ impl Compiler {
         current_chunk().code[offset + 1] = (jump & 0xff) as u8;
     }
 
-    fn declare_variable(&self) {
+    fn declare_variable(&mut self) {
         if current().scope_depth == 0 {
             return;
         }
@@ -1193,24 +1187,24 @@ impl Compiler {
         self.add_local(name);
     }
 
-    fn add_local(&self, name: &Token) {
+    fn add_local(&mut self, name: &Token) {
         if current().local_count == UINT8_COUNT {
             self.error("Too many local variables in function.");
             return;
         }
 
-        let local = &current().locals[current().local_count];
+        let local = &mut current().locals[current().local_count];
         current().local_count += 1;
         local.name = name.clone();
         local.depth = -1;
         local.is_captured = false;
     }
 
-    fn identifier_constant(&self, name: &Token) -> u8 {
-        self.make_constant(obj_val!(ObjString::take_string(name.message)))
+    fn identifier_constant(&mut self, name: &Token) -> u8 {
+        self.make_constant(obj_val!(ObjString::take_string(name.message.clone())))
     }
 
-    fn make_constant(&self, value: Value) -> u8 {
+    fn make_constant(&mut self, value: Value) -> u8 {
         let constant = current_chunk().add_constant(value);
         if constant > u8::MAX as usize {
             self.error("Too many constants in one chunk.");
@@ -1220,7 +1214,7 @@ impl Compiler {
         constant as u8
     }
 
-    fn synchronize(&self) {
+    fn synchronize(&mut self) {
         vm().parser.panic_mode = false;
 
         while vm().parser.current.type_ != TokenType::Eof {
@@ -1308,7 +1302,7 @@ impl Compiler {
             eprint!(
                 " at '{}'",
                 String::from_utf8(
-                    vm().scanner.unwrap().source.as_bytes()
+                    vm().scanner.as_ref().unwrap().source.as_bytes()
                         [token.start..token.start + token.length]
                         .to_vec()
                 )

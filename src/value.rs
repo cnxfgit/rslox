@@ -8,7 +8,6 @@ pub enum Value {
     Object(*mut Obj),
 }
 
-
 #[macro_export]
 macro_rules! is_obj {
     ($val:expr) => {{
@@ -54,7 +53,7 @@ macro_rules! as_number {
 #[macro_export]
 macro_rules! obj_val {
     ($val:expr) => {
-        Value::Object($val as *mut Obj) 
+        Value::Object($val as *mut Obj)
     };
 }
 
@@ -62,7 +61,7 @@ impl Value {
     pub fn print(&self) {}
 
     pub fn is_obj_type(&self, type_: ObjType) -> bool {
-        is_obj!(self) && (unsafe { *as_obj!(self) }).type_ == type_
+        is_obj!(self) && unsafe { (*as_obj!(self)).type_ == type_ }
     }
 }
 

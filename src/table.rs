@@ -23,7 +23,7 @@ impl Table {
     pub fn set(&mut self, key: *mut ObjString, value: Value) -> bool {
         match self.map.insert(key, value) {
             Some(_) => false,
-            None => true
+            None => true,
         }
     }
 
@@ -31,12 +31,10 @@ impl Table {
         self.map.remove(&key);
     }
 
-    pub fn get_key(&self, key: *mut ObjString) -> Option<*mut ObjString>  {
+    pub fn get_key(&self, key: *mut ObjString) -> Option<*mut ObjString> {
         match self.map.get_key_value(&key) {
-            Some(kv)=> {
-                Some(kv.0.clone())
-            }
-            None => None
+            Some(kv) => Some(kv.0.clone()),
+            None => None,
         }
     }
 

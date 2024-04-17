@@ -27,7 +27,7 @@ pub enum ObjType {
 macro_rules! as_string {
     ($val:expr) => {{
         if let Value::Object(obj) = $val {
-            if unsafe {(*obj).type_} == ObjType::String {
+            if unsafe { (*obj).type_ } == ObjType::String {
                 obj as *mut ObjString
             } else {
                 panic!("as_string! error.");
@@ -142,7 +142,7 @@ impl ObjFunction {
             (*ptr).arity = 0;
             (*ptr).upvalue_count = 0;
             (*ptr).name = null_mut();
-            let chunk_ptr: *mut Chunk = unsafe { &mut (*ptr).chunk };
+            let chunk_ptr = &mut (*ptr).chunk;
             std::ptr::write(chunk_ptr, chunk);
         }
 
@@ -267,11 +267,11 @@ pub struct ObjClosure {
 
 impl ObjClosure {
     pub fn new(function: *mut ObjFunction) -> *mut ObjClosure {
-        let upvalue_count = (unsafe { *function }).upvalue_count;
+        let upvalue_count = unsafe { (*function).upvalue_count };
         let upvalues = allocate::<*mut ObjUpvalue>(upvalue_count);
         for i in 0..upvalue_count {
-            let mut offset_ptr = unsafe { upvalues.add(i) };
-            offset_ptr = null_mut();
+            let offset_ptr = unsafe { upvalues.add(i) };
+            unsafe { *offset_ptr = null_mut() };
         }
 
         let ptr = allocate_obj::<ObjClosure>(ObjType::Closure);

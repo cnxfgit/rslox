@@ -1,14 +1,18 @@
 mod chunk;
+mod compiler;
 mod debug;
+mod memory;
+mod object;
+mod scanner;
+mod table;
 mod value;
 mod vm;
-mod compiler;
-mod scanner;
-mod object;
-mod table;
-mod memory;
-use std::{env, fs, io::{self, Write}, process};
-use vm::{InterpretResult, vm};
+use std::{
+    env, fs,
+    io::{self, Write},
+    process,
+};
+use vm::{vm, InterpretResult};
 
 fn main() -> io::Result<()> {
     vm::init_vm();
@@ -28,7 +32,7 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-fn repl() -> io::Result<()>  {
+fn repl() -> io::Result<()> {
     let mut line = String::new();
     loop {
         print!("> ");
@@ -52,6 +56,6 @@ fn run_file(path: &str) -> io::Result<()> {
     match result {
         InterpretResult::CompileError => process::exit(65),
         InterpretResult::RuntimeError => process::exit(70),
-        _ => Ok(())
+        _ => Ok(()),
     }
 }

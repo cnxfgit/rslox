@@ -132,11 +132,7 @@ impl Scanner {
         rest: &str,
         type_: TokenType,
     ) -> TokenType {
-        let begin = self.start + start;
-        if self.current - self.start == start + length
-            && self.sub_current()
-                == rest
-        {
+        if self.current - self.start == start + length && self.sub_current() == rest {
             return type_;
         }
 
@@ -256,7 +252,8 @@ impl Scanner {
     }
 
     fn sub_current(&self) -> String {
-        String::from_utf8((self.source.as_bytes()[self.start..self.start + self.current]).to_vec()).unwrap()
+        String::from_utf8((self.source.as_bytes()[self.start..self.start + self.current]).to_vec())
+            .unwrap()
     }
 }
 
