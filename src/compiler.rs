@@ -11,241 +11,241 @@ use crate::{
 
 static RULES: [ParseRule; 40] = [
     ParseRule {
-        token: "(",
+        _token: "(",
         prefix: Some(Compiler::grouping),
         infix: Some(Compiler::call),
         precedence: Precedence::Call,
     },
     ParseRule {
-        token: ")",
+        _token: ")",
         prefix: None,
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "{",
+        _token: "{",
         prefix: None,
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "}",
+        _token: "}",
         prefix: None,
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: ",",
+        _token: ",",
         prefix: None,
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: ".",
+        _token: ".",
         prefix: None,
         infix: Some(Compiler::dot),
         precedence: Precedence::Call,
     },
     ParseRule {
-        token: "-",
+        _token: "-",
         prefix: Some(Compiler::unary),
         infix: Some(Compiler::binary),
         precedence: Precedence::Term,
     },
     ParseRule {
-        token: "+",
+        _token: "+",
         prefix: None,
         infix: Some(Compiler::binary),
         precedence: Precedence::Term,
     },
     ParseRule {
-        token: ";",
+        _token: ";",
         prefix: None,
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "/",
+        _token: "/",
         prefix: None,
         infix: Some(Compiler::binary),
         precedence: Precedence::Factor,
     },
     ParseRule {
-        token: "*",
+        _token: "*",
         prefix: None,
         infix: Some(Compiler::binary),
         precedence: Precedence::Factor,
     },
     ParseRule {
-        token: "!",
+        _token: "!",
         prefix: Some(Compiler::unary),
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "!=",
+        _token: "!=",
         prefix: None,
         infix: Some(Compiler::binary),
         precedence: Precedence::Equality,
     },
     ParseRule {
-        token: "=",
+        _token: "=",
         prefix: None,
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "==",
+        _token: "==",
         prefix: None,
         infix: Some(Compiler::binary),
         precedence: Precedence::Equality,
     },
     ParseRule {
-        token: ">",
+        _token: ">",
         prefix: None,
         infix: Some(Compiler::binary),
         precedence: Precedence::Comparison,
     },
     ParseRule {
-        token: ">=",
+        _token: ">=",
         prefix: None,
         infix: Some(Compiler::binary),
         precedence: Precedence::Comparison,
     },
     ParseRule {
-        token: "<",
+        _token: "<",
         prefix: None,
         infix: Some(Compiler::binary),
         precedence: Precedence::Comparison,
     },
     ParseRule {
-        token: "<=",
+        _token: "<=",
         prefix: None,
         infix: Some(Compiler::binary),
         precedence: Precedence::Comparison,
     },
     ParseRule {
-        token: "IDENTIFIER",
+        _token: "IDENTIFIER",
         prefix: Some(Compiler::variable),
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "STRING",
+        _token: "STRING",
         prefix: Some(Compiler::string),
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "NUMBER",
+        _token: "NUMBER",
         prefix: Some(Compiler::number),
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "and",
+        _token: "and",
         prefix: None,
         infix: Some(Compiler::and),
         precedence: Precedence::And,
     },
     ParseRule {
-        token: "class",
+        _token: "class",
         prefix: None,
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "else",
+        _token: "else",
         prefix: None,
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "false",
+        _token: "false",
         prefix: Some(Compiler::literal),
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "for",
+        _token: "for",
         prefix: None,
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "fun",
+        _token: "fun",
         prefix: None,
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "if",
+        _token: "if",
         prefix: None,
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "nil",
+        _token: "nil",
         prefix: Some(Compiler::literal),
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "or",
+        _token: "or",
         prefix: None,
         infix: Some(Compiler::or),
         precedence: Precedence::Or,
     },
     ParseRule {
-        token: "print",
+        _token: "print",
         prefix: None,
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "return",
+        _token: "return",
         prefix: None,
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "super",
+        _token: "super",
         prefix: Some(Compiler::super_),
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "this",
+        _token: "this",
         prefix: Some(Compiler::this),
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "true",
+        _token: "true",
         prefix: Some(Compiler::literal),
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "var",
+        _token: "var",
         prefix: None,
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "while",
+        _token: "while",
         prefix: None,
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "ERROR",
+        _token: "ERROR",
         prefix: None,
         infix: None,
         precedence: Precedence::None,
     },
     ParseRule {
-        token: "EOF",
+        _token: "EOF",
         prefix: None,
         infix: None,
         precedence: Precedence::None,
@@ -320,7 +320,7 @@ type ParseFn = fn(&mut Compiler, bool) -> ();
 
 // 解析规则
 struct ParseRule {
-    token: &'static str,
+    _token: &'static str,
     prefix: Option<ParseFn>, // 前缀
     infix: Option<ParseFn>,  // 中缀
     precedence: Precedence,  // 优先级
@@ -342,8 +342,8 @@ impl ClassCompiler {
 }
 
 pub struct Compiler {
-    enclosing: *mut Compiler,   // 上一个编译器 用来还原current
-    function: *mut ObjFunction, // 当前编译函数对象
+    pub enclosing: *mut Compiler,   // 上一个编译器 用来还原current
+    pub function: *mut ObjFunction, // 当前编译函数对象
     type_: FunctionType,        // 当前函数类型
 
     locals: Vec<Local>,     // 局部变量数组
@@ -1171,9 +1171,9 @@ impl Compiler {
 
         let name = &vm().parser.previous;
 
-        let mut i = current().local_count - 1;
+        let mut i = (current().local_count - 1) as i32;
         while i >= 0 {
-            let local = &current().locals[i];
+            let local = &current().locals[i as usize];
             if local.depth != -1 && local.depth < current().scope_depth as i32 {
                 break;
             }

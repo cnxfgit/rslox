@@ -13,14 +13,14 @@ use crate::{
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum ObjType {
-    BoundMethod, // 绑定方法对象
-    Class,       // 类对象
-    Closure,     // 闭包对象
-    Function,    // 函数对象
-    Instance,    // 实例对象
-    Native,      // 原生函数对象
-    String,      // 字符串对象
-    Upvalue,     // 闭包提升值对象
+    BoundMethod = 1, // 绑定方法对象
+    Class,           // 类对象
+    Closure,         // 闭包对象
+    Function,        // 函数对象
+    Instance,        // 实例对象
+    Native,          // 原生函数对象
+    String,          // 字符串对象
+    Upvalue,         // 闭包提升值对象
 }
 
 #[macro_export]
@@ -106,6 +106,7 @@ macro_rules! as_closure {
 
 pub trait Object {
     fn obj_type(&self) -> ObjType;
+    fn print(&mut self);
 }
 
 macro_rules! obj_val {
@@ -123,6 +124,15 @@ pub struct Obj {
 impl Object for Obj {
     fn obj_type(&self) -> ObjType {
         self.type_
+    }
+    fn print(&mut self) {
+        unsafe {
+            match self.type_ {
+                ObjType::BoundMethod => {
+                    
+                }
+            }
+        }
     }
 }
 
@@ -150,9 +160,23 @@ impl ObjFunction {
     }
 }
 
+// 输出函数信息
+fn print_function(function: *mut ObjFunction) {
+    if (unsafe { *function }).name.is_null() {
+        print!("<script>");
+        return;
+    }
+    unsafe {
+        print!("<fn {}>", (*(*function).name).chars);
+    }
+}
+
 impl Object for ObjFunction {
     fn obj_type(&self) -> ObjType {
         self.obj.obj_type()
+    }
+    fn print(&mut self) {
+        print_function(self as *mut ObjFunction);
     }
 }
 
@@ -178,10 +202,13 @@ impl Object for ObjNative {
     fn obj_type(&self) -> ObjType {
         self.obj.obj_type()
     }
+    fn print(&mut self) {
+        print!("<native fn>");
+    }
 }
 
 pub struct ObjString {
-    obj: Obj,          // 公共对象头
+    pub obj: Obj,      // 公共对象头
     pub chars: String, // 字符串
 }
 
@@ -216,6 +243,9 @@ impl ObjString {
 impl Object for ObjString {
     fn obj_type(&self) -> ObjType {
         self.obj.obj_type()
+    }
+    fn print(&mut self) {
+        print!("{}", self.chars);
     }
 }
 
@@ -255,6 +285,9 @@ impl Object for ObjUpvalue {
     fn obj_type(&self) -> ObjType {
         self.obj.obj_type()
     }
+    fn print(&mut self) {
+        print!("upvalue");
+    }
 }
 
 // 闭包对象
@@ -289,6 +322,9 @@ impl Object for ObjClosure {
     fn obj_type(&self) -> ObjType {
         self.obj.obj_type()
     }
+    fn print(&mut self) {
+        print_function(self.function);
+    }
 }
 
 // 类对象
@@ -313,6 +349,11 @@ impl ObjClass {
 impl Object for ObjClass {
     fn obj_type(&self) -> ObjType {
         self.obj.obj_type()
+    }
+    fn print(&mut self) {
+        unsafe {
+            print!("{}", (*self.name).chars);
+        }
     }
 }
 
@@ -340,6 +381,11 @@ impl Object for ObjInstance {
     fn obj_type(&self) -> ObjType {
         self.obj.obj_type()
     }
+    fn print(&mut self) {
+        unsafe {
+            print!("{} instance", (*(*self.class).name).chars);
+        }
+    }
 }
 
 // 绑定方法对象
@@ -364,5 +410,10 @@ impl ObjBoundMethod {
 impl Object for ObjBoundMethod {
     fn obj_type(&self) -> ObjType {
         self.obj.obj_type()
+    }
+    fn print(&mut self) {
+        unsafe {
+            print_function((*self.method).function);
+        }
     }
 }

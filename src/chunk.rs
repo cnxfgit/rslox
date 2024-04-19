@@ -80,7 +80,10 @@ impl Into<OpCode> for u8 {
             34 => OpCode::Class,
             35 => OpCode::Inherit,
             36 => OpCode::Method,
-            _ => panic!("Invalid Opcode."),
+            _ => {
+                println!("Unknown opcode {}", self as u8);
+                panic!("Invalid Opcode.")
+            }
         }
     }
 }

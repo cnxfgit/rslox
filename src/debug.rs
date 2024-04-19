@@ -86,10 +86,6 @@ impl Chunk {
             OpCode::Class => self.constant_instruction("OP_CLASS", offset),
             OpCode::Inherit => self.simple_instruction("OP_INHERIT", offset),
             OpCode::Method => self.constant_instruction("OP_METHOD", offset),
-            _ => {
-                println!("Unknown opcode {}", instruction as u8);
-                offset + 1
-            }
         }
     }
 
@@ -115,7 +111,7 @@ impl Chunk {
 
     // 跳转指令 操作数为两个字节
     fn jump_instruction(&self, name: &str, sign: i32, offset: usize) -> usize {
-        let mut jump = (self.code[offset + 1] << 8) as u16;
+        let mut jump = (self.code[offset + 1] as u16) << 8;
         jump |= self.code[offset + 2] as u16;
         println!(
             "{:<16} {:>4} -> {}",

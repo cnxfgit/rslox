@@ -45,10 +45,10 @@ pub enum InterpretResult {
 
 // 调用帧
 #[derive(Clone, Copy)]
-struct CallFrame {
-    closure: *mut ObjClosure, // 调用的函数闭包
-    ip: *mut u8,              // 指向字节码数组的指针 指函数执行到哪了
-    slots: *mut Value,        // 指向vm栈中该函数使用的第一个局部变量
+pub struct CallFrame {
+    pub closure: *mut ObjClosure, // 调用的函数闭包
+    ip: *mut u8,                  // 指向字节码数组的指针 指函数执行到哪了
+    slots: *mut Value,            // 指向vm栈中该函数使用的第一个局部变量
 }
 
 impl CallFrame {
@@ -62,23 +62,21 @@ impl CallFrame {
 }
 
 pub struct VM {
-    frames: [CallFrame; FRAMES_MAX], // 栈帧数组 所有函数调用的执行点
-    frame_count: usize,              // 当前调用栈数
+    pub frames: [CallFrame; FRAMES_MAX], // 栈帧数组 所有函数调用的执行点
+    pub frame_count: usize,              // 当前调用栈数
 
-    stack: [Value; STACK_MAX],      // 虚拟机栈
-    stack_top: *mut Value,          // 栈顶指针 总是指向栈顶
-    pub globals: Table,             // 全局变量表
-    pub strings: Table,             // 全局字符串表
-    init_string: *mut ObjString,    // 构造器名称
-    open_upvalues: *mut ObjUpvalue, // 全局提升值
+    pub stack: [Value; STACK_MAX],      // 虚拟机栈
+    pub stack_top: *mut Value,          // 栈顶指针 总是指向栈顶
+    pub globals: Table,                 // 全局变量表
+    pub strings: Table,                 // 全局字符串表
+    pub init_string: *mut ObjString,    // 构造器名称
+    pub open_upvalues: *mut ObjUpvalue, // 全局提升值
 
-    bytes_allocated: usize, // 已经分配的内存
-    next_gc: usize,         // 出发下一次gc的阈值
+    pub bytes_allocated: usize, // 已经分配的内存
+    pub next_gc: usize,         // 出发下一次gc的阈值
 
-    objects: *mut Obj,         // 对象根链表
-    gray_count: usize,         // 灰色对象数量
-    gray_capacity: usize,      // 灰色对象容量
-    gray_stack: *mut *mut Obj, // 灰色对象栈
+    pub objects: *mut Obj,         // 对象根链表
+    pub gray_stack: Vec< *mut Obj>, // 灰色对象栈
 
     pub current_compiler: *mut Compiler,
     pub parser: Parser,
@@ -108,7 +106,7 @@ macro_rules! read_short {
     ($frame:expr) => {
         unsafe {
             (*$frame).ip = (*$frame).ip.add(2);
-            (*((*$frame).ip.sub(2)) << 8) as u16 | *(*$frame).ip.sub(1) as u16
+            (((*((*$frame).ip.sub(2))) as u16) << 8) | *(*$frame).ip.sub(1) as u16
         }
     };
 }
@@ -192,9 +190,7 @@ impl VM {
             next_gc: 1024 * 1024,
 
             objects: null_mut(),
-            gray_count: 0,
-            gray_capacity: 0,
-            gray_stack: null_mut(),
+            gray_stack: vec![],
 
             current_compiler: null_mut(),
             parser: Parser::new(),

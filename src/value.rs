@@ -1,4 +1,4 @@
-use crate::object::{Obj, ObjType};
+use crate::object::{Obj, ObjType, Object};
 
 #[derive(Clone, Copy)]
 pub enum Value {
@@ -58,7 +58,16 @@ macro_rules! obj_val {
 }
 
 impl Value {
-    pub fn print(&self) {}
+    pub fn print(&self) {
+        match self {
+            Value::Boolean(b) => print!("{}", if *b { "true" } else { "false" }),
+            Value::Nil => print!("nil"),
+            Value::Number(n) => print!("{}", n),
+            Value::Object(obj) =>  unsafe {
+                (*(*obj)) .print()
+            },
+        }
+    }
 
     pub fn is_obj_type(&self, type_: ObjType) -> bool {
         is_obj!(self) && unsafe { (*as_obj!(self)).type_ == type_ }
