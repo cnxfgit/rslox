@@ -1,10 +1,11 @@
 use crate::{
-    as_obj, is_obj, obj_val,
+    is_obj, obj_val,
     object::{
-        self, Obj, ObjBoundMethod, ObjClass, ObjClosure, ObjFunction, ObjInstance, ObjNative, ObjString, ObjType, ObjUpvalue, Object
+        Obj, ObjBoundMethod, ObjClass, ObjClosure, ObjFunction, ObjInstance, ObjNative, ObjString,
+        ObjType, ObjUpvalue, Object,
     },
     table::Table,
-    value::{Value, ValueArray},
+    value::{as_obj, Value, ValueArray},
     vm::vm,
 };
 use std::{alloc::Layout, ptr::null_mut};
@@ -47,7 +48,7 @@ pub fn dealloc<T>(ptr: *mut T, size: usize) {
 }
 
 fn collect_garbage() {
-    let before;
+    let before: i32;
     #[cfg(feature = "debug_log_gc")]
     {
         println!("-- gc begin");
@@ -79,16 +80,18 @@ fn sweep() {
     let mut previous: *mut Obj = null_mut();
     let mut object = vm().objects;
     while !object.is_null() {
-        let object_ref = unsafe { object.as_mut().unwrap()};
-        if object_ref.is_marked  {
+        let object_ref = unsafe { object.as_mut().unwrap() };
+        if object_ref.is_marked {
             object_ref.is_marked = false;
             previous = object;
-            object = object_ref .next;
+            object = object_ref.next;
         } else {
             let unreached = object;
             object = object_ref.next;
             if !previous.is_null() {
-                (unsafe { *previous }).next = object;
+                unsafe {
+                    (*previous).next = object;
+                }
             } else {
                 vm().objects = object;
             }
@@ -99,51 +102,54 @@ fn sweep() {
 }
 
 // 释放对象
-fn free_object(object: *mut Obj ) {
+fn free_object(object: *mut Obj) {
     #[cfg(feature = "debug_log_gc")]
     unsafe {
         println!("{:p} free type {}", object, (*object).type_ as i32);
     }
     let object_ref = unsafe { object.as_mut().unwrap() };
-  
-         match object_ref.type_ {
-            ObjType::BoundMethod => dealloc::<ObjBoundMethod>(object as *mut ObjBoundMethod, 1),
-            ObjType::Class => {
-                let class: *mut ObjClass = object as *mut ObjClass;
-                dealloc::<Table>((unsafe { *class }).methods, 1);
-                dealloc::<ObjClass>(object as *mut ObjClass, 1);
+
+    match object_ref.type_ {
+        ObjType::BoundMethod => dealloc::<ObjBoundMethod>(object as *mut ObjBoundMethod, 1),
+        ObjType::Class => {
+            let class: *mut ObjClass = object as *mut ObjClass;
+            unsafe {
+                dealloc::<Table>((*class).methods, 1);
             }
-            ObjType::Closure => {
-                let closure = object as *mut  ObjClosure;
-                unsafe {
-                    dealloc::<ObjUpvalue>(*(*closure).upvalues, (*closure).upvalue_count);
-                }
-                dealloc::<ObjClosure>(object as *mut ObjClosure, 1);
+            dealloc::<ObjClass>(object as *mut ObjClass, 1);
+        }
+        ObjType::Closure => {
+            let closure = object as *mut ObjClosure;
+            unsafe {
+                dealloc::<ObjUpvalue>(*(*closure).upvalues, (*closure).upvalue_count);
             }
-            ObjType::Function => {
-                dealloc::<ObjFunction>(object as *mut ObjFunction, 1);
-            }
-            ObjType::Instance => {
-                let instance = object as *mut  ObjInstance;
-                dealloc::<Table>(unsafe { instance.as_ref().unwrap().fields }, 1);
-                dealloc::<ObjInstance>(object as *mut ObjInstance, 1);
-            }
-            ObjType::Native => dealloc::<ObjNative>(object as *mut ObjNative, 1),
-            ObjType::String => {
-                dealloc::<ObjString>(object as *mut ObjString, 1);
-            }
-            ObjType::Upvalue => dealloc::<ObjUpvalue>(object as *mut ObjUpvalue, 1),
+            dealloc::<ObjClosure>(object as *mut ObjClosure, 1);
+        }
+        ObjType::Function => {
+            dealloc::<ObjFunction>(object as *mut ObjFunction, 1);
+        }
+        ObjType::Instance => {
+            let instance = object as *mut ObjInstance;
+            dealloc::<Table>(unsafe { instance.as_ref().unwrap().fields }, 1);
+            dealloc::<ObjInstance>(object as *mut ObjInstance, 1);
+        }
+        ObjType::Native => dealloc::<ObjNative>(object as *mut ObjNative, 1),
+        ObjType::String => {
+            dealloc::<ObjString>(object as *mut ObjString, 1);
+        }
+        ObjType::Upvalue => dealloc::<ObjUpvalue>(object as *mut ObjUpvalue, 1),
     }
 }
 
-
 fn table_remove_white(table: *mut Table) {
-    for (key, value) in &unsafe { table.as_ref().unwrap().map } {
-        if !key.is_null() && !unsafe { key.as_ref().unwrap().obj.is_marked } {
-            unsafe { table.as_mut().unwrap().remove(key.clone()) };
+    unsafe {
+        for (key, value) in &table.as_ref().unwrap().map {
+            if !key.is_null() && !key.as_ref().unwrap().obj.is_marked {
+                table.as_mut().unwrap().remove(key.clone());
+            }
+            mark_object(key.clone() as *mut Obj);
+            mark_value(value.clone());
         }
-        mark_object(key.clone() as *mut Obj);
-        mark_value(value.clone());
     }
 }
 
@@ -165,7 +171,7 @@ fn blacken_object(object: *mut Obj) {
         println!();
     }
 
-    match (unsafe { *object }).type_ {
+    match unsafe { (*object).type_ } {
         ObjType::BoundMethod => {
             let bound = object as *mut ObjBoundMethod;
             let bound = unsafe { bound.as_ref().unwrap() };
@@ -190,7 +196,7 @@ fn blacken_object(object: *mut Obj) {
             let function = object as *mut ObjFunction;
             let function = unsafe { function.as_ref().unwrap() };
             mark_object(function.name as *mut Obj);
-            mark_array(function.chunk.constants);
+            mark_array(&function.chunk.constants);
         }
         ObjType::Instance => {
             let instance = object as *mut ObjInstance;
@@ -198,13 +204,13 @@ fn blacken_object(object: *mut Obj) {
             mark_object(instance.class as *mut Obj);
             mark_table(instance.fields);
         }
-        ObjType::Upvalue => mark_value((unsafe { *(object as *mut ObjUpvalue) }).closed),
+        ObjType::Upvalue => unsafe { mark_value((*(object as *mut ObjUpvalue)).closed) },
         ObjType::Native | ObjType::String => {}
     }
 }
 
 // 标记数组
-fn mark_array(array: ValueArray) {
+fn mark_array(array: &ValueArray) {
     for i in 0..array.count() {
         mark_value(array.values[i]);
     }
@@ -230,7 +236,9 @@ fn mark_roots() {
     let mut upvalue = vm().open_upvalues;
     while !upvalue.is_null() {
         mark_object(upvalue as *mut Obj);
-        upvalue = (unsafe { *upvalue }).next;
+        unsafe {
+            upvalue = (*upvalue).next;
+        }
     }
 
     // 全局变量
@@ -249,7 +257,7 @@ fn mark_compiler_roots() {
 
 fn mark_value(value: Value) {
     if is_obj!(value) {
-        mark_object(as_obj!(value));
+        mark_object(as_obj(value));
     }
 }
 
@@ -257,7 +265,7 @@ fn mark_object(object: *mut Obj) {
     if object.is_null() {
         return;
     }
-    if (unsafe { *object }).is_marked {
+    if unsafe { (*object).is_marked } {
         return;
     }
 
@@ -268,13 +276,15 @@ fn mark_object(object: *mut Obj) {
         println!("");
     }
 
-    (unsafe { *object }).is_marked = true;
+    unsafe {
+        (*object).is_marked = true;
+    }
 
     vm().gray_stack.push(object);
 }
 
 fn mark_table(table: *mut Table) {
-    for (key, value) in &unsafe { table.as_ref().unwrap().map } {
+    for (key, value) in unsafe { &table.as_ref().unwrap().map } {
         mark_object(key.clone() as *mut Obj);
         mark_value(value.clone());
     }

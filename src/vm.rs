@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::ptr::{self, null_mut};
+use std::ptr::null_mut;
 use std::time::Instant;
 
 use crate::chunk::OpCode;
@@ -10,9 +10,9 @@ use crate::object::{
 };
 use crate::scanner::Scanner;
 use crate::table::Table;
-use crate::value::Value;
+use crate::value::{as_obj, Value};
 use crate::{
-    as_bound_method, as_class, as_closure, as_function, as_instance, as_native, as_number, as_obj,
+    as_bound_method, as_class, as_closure, as_function, as_instance, as_native, as_number,
     as_string, is_class, is_instance, is_number, is_obj, is_string, obj_val,
 };
 
@@ -23,18 +23,21 @@ const STACK_MAX: usize = UINT8_COUNT * FRAMES_MAX;
 static mut VM: *mut VM = null_mut();
 
 pub fn init_vm() {
-    let vm = Box::new(VM::new());
-    unsafe { VM = Box::into_raw(vm) };
+    let box_vm = Box::new(VM::new());
+    unsafe { VM = Box::into_raw(box_vm) };
+    vm().stack_top = vm().stack.as_mut_ptr();
+    vm().init_string = ObjString::take_string("init".into());
+    vm().define_native("clock", clock_native);
 }
 
 pub fn drop_vm() {
     unsafe {
-        Box::from_raw(VM);
+        let _ = Box::from_raw(VM);
     }
 }
 
 pub fn vm() -> &'static mut VM {
-    unsafe { &mut *VM }
+    unsafe { VM.as_mut().unwrap() }
 }
 
 pub enum InterpretResult {
@@ -76,7 +79,7 @@ pub struct VM {
     pub next_gc: usize,         // 出发下一次gc的阈值
 
     pub objects: *mut Obj,         // 对象根链表
-    pub gray_stack: Vec< *mut Obj>, // 灰色对象栈
+    pub gray_stack: Vec<*mut Obj>, // 灰色对象栈
 
     pub current_compiler: *mut Compiler,
     pub parser: Parser,
@@ -171,7 +174,7 @@ fn values_equal(a: Value, b: Value) -> bool {
 
 impl VM {
     pub fn new() -> VM {
-        let mut vm = VM {
+        VM {
             frames: [CallFrame::new(); FRAMES_MAX],
             frame_count: 0,
 
@@ -183,7 +186,7 @@ impl VM {
             strings: Table {
                 map: HashMap::new(),
             },
-            init_string: ObjString::take_string("init".into()),
+            init_string: null_mut(),
             open_upvalues: null_mut(),
 
             bytes_allocated: 0,
@@ -196,19 +199,14 @@ impl VM {
             parser: Parser::new(),
             scanner: None,
             class_compiler: null_mut(),
-        };
-        vm.stack_top = vm.stack.as_mut_ptr();
-
-        vm.define_native("clock", clock_native);
-
-        vm
+        }
     }
 
     fn define_native(&mut self, name: &str, function: NativeFn) {
         self.push(obj_val!(ObjString::take_string(name.into())));
         self.push(obj_val!(ObjNative::new(function)));
         self.globals
-            .set(as_string!(self.stack[0].clone()), self.stack[1]);
+            .set(as_string!(self.stack[0]), self.stack[1]);
         self.pop();
         self.pop();
     }
@@ -237,9 +235,9 @@ impl VM {
     fn runtime_error(&mut self, message: String) {
         eprintln!("{}", message);
 
-        let mut i = self.frame_count - 1;
+        let mut i = self.frame_count as i32 - 1;
         while i >= 0 {
-            let frame = &self.frames[i];
+            let frame = &self.frames[i as usize];
             let function = unsafe { (*(*frame).closure).function };
             let instruction =
                 frame.ip as usize - unsafe { (*function).chunk.code.as_mut_ptr() } as usize - 1;
@@ -559,7 +557,7 @@ impl VM {
             }
         }
 
-        InterpretResult::Ok
+        // InterpretResult::Ok
     }
 
     fn define_method(&mut self, name: *mut ObjString) {
@@ -634,7 +632,7 @@ impl VM {
         arg_count: u8,
     ) -> bool {
         if let Some(method) = unsafe { (*(*class).methods).get(name) } {
-            self.call(as_closure!(method), arg_count as usize)
+            self.call(as_closure!(method.clone()), arg_count as usize)
         } else {
             self.runtime_error(format!("Undefined property '{}'.", unsafe {
                 &(*name).chars
@@ -646,7 +644,7 @@ impl VM {
     // 调用 值类型  仅接受 函数 类 方法
     fn call_value(&mut self, callee: Value, arg_count: u8) -> bool {
         if is_obj!(callee) {
-            match unsafe { (*as_obj!(callee)).type_ } {
+            match unsafe { (*as_obj(callee)).type_ } {
                 ObjType::BoundMethod => {
                     let bound = as_bound_method!(callee);
                     unsafe {
@@ -680,7 +678,7 @@ impl VM {
                 }
                 ObjType::Closure => return self.call(as_closure!(callee), arg_count as usize),
                 ObjType::Native => {
-                    let native = as_native!(callee);
+                    let native = unsafe { as_native!(callee).as_mut().unwrap() }.function;
                     let result = native(arg_count as usize, unsafe {
                         self.stack_top.sub(arg_count as usize)
                     });

@@ -1,8 +1,8 @@
 use crate::{
-    as_function, as_obj,
+    as_function,
     chunk::{Chunk, OpCode},
     object::ObjFunction,
-    value::Value,
+    value::as_obj,
 };
 
 impl Chunk {

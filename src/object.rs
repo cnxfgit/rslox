@@ -7,7 +7,7 @@ use crate::{
     chunk::Chunk,
     memory::{allocate, allocate_obj, dealloc},
     table::Table,
-    value::Value,
+    value::{Value, as_obj},
     vm::vm,
 };
 
@@ -62,7 +62,7 @@ macro_rules! is_class {
 #[macro_export]
 macro_rules! as_instance {
     ($val:expr) => {
-        as_obj!($val) as *mut ObjInstance
+        as_obj($val) as *mut ObjInstance
     };
 }
 
@@ -70,8 +70,7 @@ macro_rules! as_instance {
 macro_rules! as_native {
     ($val:expr) => {
         unsafe {
-            let native = as_obj!($val) as *mut ObjNative;
-            (*native).function
+            as_obj($val) as *mut ObjNative
         }
     };
 }
@@ -79,28 +78,35 @@ macro_rules! as_native {
 #[macro_export]
 macro_rules! as_function {
     ($val:expr) => {
-        as_obj!($val) as *mut ObjFunction
+        as_obj($val) as *mut ObjFunction
     };
 }
 
 #[macro_export]
 macro_rules! as_bound_method {
     ($val:expr) => {
-        as_obj!($val) as *mut ObjBoundMethod
+        as_obj($val) as *mut ObjBoundMethod
     };
 }
 
 #[macro_export]
 macro_rules! as_class {
     ($val:expr) => {
-        as_obj!($val) as *mut ObjClass
+        as_obj($val) as *mut ObjClass
+    };
+}
+
+#[macro_export]
+macro_rules! as_upvalue {
+    ($val:expr) => {
+        as_obj($val) as *mut ObjUpvalue
     };
 }
 
 #[macro_export]
 macro_rules! as_closure {
     ($val:expr) => {
-        as_obj!($val) as *mut ObjClosure
+        as_obj($val) as *mut ObjClosure
     };
 }
 
@@ -115,6 +121,7 @@ macro_rules! obj_val {
     };
 }
 
+#[derive(Clone, Copy)]
 pub struct Obj {
     pub type_: ObjType,  // 对象类型
     pub is_marked: bool, // 是否被标记
@@ -126,11 +133,30 @@ impl Object for Obj {
         self.type_
     }
     fn print(&mut self) {
-        unsafe {
-            match self.type_ {
-                ObjType::BoundMethod => {
-                    
-                }
+        match self.type_ {
+            ObjType::BoundMethod => {
+                unsafe { as_bound_method!(Value::Object(self)).as_mut().unwrap() }.print();
+            }
+            ObjType::Class => {
+                (unsafe { as_class!(Value::Object(self)).as_mut().unwrap() }).print();
+            }
+            ObjType::Closure => {
+                (unsafe { as_closure!(Value::Object(self)).as_mut().unwrap() }).print();
+            }
+            ObjType::Function => {
+                (unsafe { as_function!(Value::Object(self)).as_mut().unwrap() }).print();
+            }
+            ObjType::Instance => {
+                (unsafe { as_instance!(Value::Object(self)).as_mut().unwrap() }).print();
+            }
+            ObjType::Native => {
+                (unsafe { as_native!(Value::Object(self)).as_mut().unwrap() }).print();
+            }
+            ObjType::String => {
+                (unsafe { as_string!(Value::Object(self)).as_mut().unwrap() }).print();
+            }
+            ObjType::Upvalue => {
+                (unsafe { as_upvalue!(Value::Object(self)).as_mut().unwrap() }).print();
             }
         }
     }
@@ -162,7 +188,7 @@ impl ObjFunction {
 
 // 输出函数信息
 fn print_function(function: *mut ObjFunction) {
-    if (unsafe { *function }).name.is_null() {
+    if unsafe { (*function).name.is_null() } {
         print!("<script>");
         return;
     }

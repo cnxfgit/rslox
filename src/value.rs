@@ -28,15 +28,12 @@ macro_rules! is_number {
     }};
 }
 
-#[macro_export]
-macro_rules! as_obj {
-    ($val:expr) => {{
-        if let Value::Object(obj) = $val {
-            obj.clone()
-        } else {
-            panic!("as_obj! error")
-        }
-    }};
+pub fn as_obj(value: Value) -> *mut Obj {
+    if let Value::Object(obj) = value {
+        obj.clone()
+    } else {
+        panic!("as_obj error")
+    }
 }
 
 #[macro_export]
@@ -63,14 +60,12 @@ impl Value {
             Value::Boolean(b) => print!("{}", if *b { "true" } else { "false" }),
             Value::Nil => print!("nil"),
             Value::Number(n) => print!("{}", n),
-            Value::Object(obj) =>  unsafe {
-                (*(*obj)) .print()
-            },
+            Value::Object(obj) => unsafe { (*(*obj)).print() },
         }
     }
 
     pub fn is_obj_type(&self, type_: ObjType) -> bool {
-        is_obj!(self) && unsafe { (*as_obj!(self)).type_ == type_ }
+        is_obj!(self) && unsafe { (*as_obj(self.clone())).type_ == type_ }
     }
 }
 
