@@ -37,7 +37,7 @@ pub fn drop_vm() {
 }
 
 pub fn vm() -> &'static mut VM {
-    unsafe { VM.as_mut().unwrap() }
+    unsafe { VM.as_mut().unwrap()  as &'static mut VM}
 }
 
 pub enum InterpretResult {

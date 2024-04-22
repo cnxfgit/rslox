@@ -48,7 +48,7 @@ pub fn dealloc<T>(ptr: *mut T, size: usize) {
 }
 
 fn collect_garbage() {
-    let before: i32;
+    let before: usize;
     #[cfg(feature = "debug_log_gc")]
     {
         println!("-- gc begin");

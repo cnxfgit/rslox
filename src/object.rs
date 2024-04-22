@@ -69,9 +69,7 @@ macro_rules! as_instance {
 #[macro_export]
 macro_rules! as_native {
     ($val:expr) => {
-        unsafe {
-            as_obj($val) as *mut ObjNative
-        }
+        as_obj($val) as *mut ObjNative
     };
 }
 
